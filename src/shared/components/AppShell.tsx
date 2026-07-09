@@ -58,6 +58,25 @@ const ADMIN_NAV: NavItem[] = [
       </svg>
     ),
   },
+  {
+    to: '/admin/anexos',
+    label: 'Configurar Anexos',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M14 2H4a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4a2 2 0 00-2-2z" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M6 6h6M6 10h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
+  {
+    to: '/admin/tipos-documento',
+    label: 'Configurar Flujos',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M2 9h14M5 5l-3 4 3 4M13 5l3 4-3 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
 ];
 
 const ROLE_NAV = { student: STUDENT_NAV, evaluator: EVALUATOR_NAV, admin: ADMIN_NAV };

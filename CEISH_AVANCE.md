@@ -15,9 +15,9 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
 | **1.1 Definición de Tipos** | ✅ Completado | Modelos generalizados (`Documento`, `RespuestaAnexo`, `TipoDocumento`, `Seccion`, `Pregunta`, `Autor`, `Escalamiento`, `Notificacion`) en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts). |
-| **1.2 Acciones CRUD de Configuración y Seed Dinámico** | ⏳ Pendiente | Implementar acciones CRUD en [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts) (`crearAnexoTemplate`, `crearTipoDocumento`, etc.) y autogenerar el seed "Investigación" a través de ellas. |
-| **1.3 Panel Admin: CRUD de Anexos y Preguntas** | ⏳ Pendiente | Interfaz en el panel de administrador para crear/editar/eliminar plantillas de anexo y sus preguntas dinámicas (checklist, si-no, texto abierto). |
-| **1.4 Panel Admin: CRUD de Tipos de Documento** | ⏳ Pendiente | Interfaz en el panel de administrador para crear tipos de documento, secciones/etapas y asociar anexos obligatorios/opcionales. |
+| **1.2 Acciones CRUD de Configuración y Seed Dinámico** | ✅ Completado | Acciones CRUD creadas en [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts) (`crearAnexoTemplate`, `crearTipoDocumento`, etc.) y seed de "Investigación" orquestado secuencialmente a través de ellas. |
+| **1.3 Panel Admin: CRUD de Anexos y Preguntas** | ✅ Completado | Pantalla de gestión interactiva [AnexoTemplateCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/AnexoTemplateCRUD.tsx) para crear/editar/eliminar anexos y preguntas de 3 tipos. |
+| **1.4 Panel Admin: CRUD de Tipos de Documento** | ✅ Completado | Pantalla de gestión interactiva [TipoDocumentoCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/TipoDocumentoCRUD.tsx) para crear flujos, etapas/secciones y asociar plantillas. |
 
 ### 📝 Fase 2: Interfaz del Investigador Dinámica
 | Tarea | Estado | Descripción / Entregable |
@@ -46,3 +46,5 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
   * Clasificación de archivos legacy frente a los nuevos que se van a agregar.
   * Creación del archivo de seguimiento [CEISH_AVANCE.md](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/CEISH_AVANCE.md).
   * **Tarea 1.1 completada:** Adición de tipos TypeScript específicos para el Motor Configurable en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts).
+  * **Tareas 1.2, 1.3 y 1.4 completadas:** Implementación de acciones CRUD dinámicas y seed atómico por helpers puros en el store de Zustand [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts). Creación y estilizado de las pantallas de administración interactiva [AnexoTemplateCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/AnexoTemplateCRUD.tsx) y [TipoDocumentoCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/TipoDocumentoCRUD.tsx). Integración de rutas en el panel y sidebar de navegación de administrador en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) y en el [router](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/app/router/index.tsx).
+

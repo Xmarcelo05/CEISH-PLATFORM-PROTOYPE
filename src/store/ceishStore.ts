@@ -1,16 +1,25 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { 
-  Investigacion, 
+  Documento, 
   AnexoTemplate, 
-  EmisionAnexo, 
+  RespuestaAnexo, 
   AsignacionCEISH,
   RiesgoTipo,
-  InvestigacionEstado,
-  VersionArchivo
+  DocumentoEstado,
+  VersionArchivo,
+  Pregunta,
+  Seccion,
+  TipoDocumento,
+  AnexoAsignado,
+  Notificacion,
+  Escalamiento,
+  Autor
 } from '../shared/types/platform.types';
 
-// Helper seguro para generar UUIDs en el navegador
+// ============================================================================
+// AUXILIARES: GENERADOR DE UUID
+// ============================================================================
 const generateUUID = (): string => {
   if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
     return window.crypto.randomUUID();
@@ -22,80 +31,21 @@ const generateUUID = (): string => {
   });
 };
 
-// Carga inicial estática de las plantillas de anexos (Configuradas exactamente según CampoTipo)
-const initialTemplates: AnexoTemplate[] = [
-  {
-    id: 'anexo-27',
-    numero: 27,
-    nombre: 'Formato para Estratificación de Riesgos',
-    campos: [
-      { id: 'a27_c1', label: '1. ¿La investigación involucra procedimientos que puedan causar daño físico o psicológico directo al sujeto?', tipo: 'cumple-nocumple' },
-      { id: 'a27_c2', label: '2. ¿Se recolectan datos personales sensibles o información privada de carácter confidencial?', tipo: 'cumple-nocumple' },
-      { id: 'a27_c3', label: '3. ¿Se utilizan muestras biológicas humanas (sangre, tejidos, fluidos)?', tipo: 'cumple-nocumple' },
-      { id: 'a27_c4', label: '4. ¿Involucra poblaciones vulnerables (niños, personas con discapacidad, etc.)?', tipo: 'cumple-nocumple' },
-      { id: 'a27_c5', label: 'Justificación / Criterio final del revisor', tipo: 'texto-libre' }
-    ]
-  },
-  {
-    id: 'anexo-11',
-    numero: 11,
-    nombre: 'Formato de Carta de Exención (Sin Riesgo)',
-    campos: [
-      { id: 'a11_c1', label: 'Justificación técnica del cumplimiento de criterios de exención ética', tipo: 'texto-libre' },
-      { id: 'a11_c2', label: 'Declaración formal de exención de revisión por el comité CEISH', tipo: 'cumple-nocumple' }
-    ]
-  },
-  {
-    id: 'anexo-12',
-    numero: 12,
-    nombre: 'Check List de Evaluación de los proyectos de investigación',
-    campos: [
-      { id: 'a12_c1', label: 'A. Título de la investigación descriptivo y delimitado', tipo: 'cumple-nocumple' },
-      { id: 'a12_c2', label: 'B. Justificación teórica y empírica del problema de investigación', tipo: 'cumple-nocumple' },
-      { id: 'a12_c3', label: 'C. Objetivos específicos coherentes con el objetivo general', tipo: 'cumple-nocumple' },
-      { id: 'a12_c4', label: 'D. Diseño metodológico adecuado y detallado', tipo: 'cumple-nocumple' },
-      { id: 'a12_c5', label: 'E. Consideraciones éticas aplicables debidamente fundamentadas', tipo: 'cumple-nocumple' },
-      { id: 'a12_obs', label: 'F. Observaciones generales detalladas', tipo: 'texto-libre' }
-    ]
-  },
-  {
-    id: 'anexo-13',
-    numero: 13,
-    nombre: 'Formato para emisión de resoluciones de aprobación',
-    campos: [
-      { id: 'a13_c1', label: 'Declaración formal de Aprobación Ética y Metodológica', tipo: 'cumple-nocumple' },
-      { id: 'a13_c2', label: 'Términos y condiciones de la aprobación del proyecto', tipo: 'texto-libre' }
-    ]
-  },
-  {
-    id: 'anexo-23',
-    numero: 23,
-    nombre: 'Declaracion de conflicto de intereses de los miembros del CEISH-Uleam',
-    campos: [
-      { id: 'a23_c1', label: '1. Describa detalladamente la causa de su conflicto de interés con el proyecto o sus autores', tipo: 'texto-libre' },
-      { id: 'a23_c2', label: 'Declaración juramentada de inhibición en el proceso de evaluación', tipo: 'cumple-nocumple' }
-    ]
-  },
-  {
-    id: 'anexo-26',
-    numero: 26,
-    nombre: 'Formato para suspensión o revocatoria de la aprobación de proyecto de investigación',
-    campos: [
-      { id: 'a26_c1', label: '1. Motivos de la suspensión/revocatoria (vencimiento de plazos, faltas éticas, etc.)', tipo: 'texto-libre' },
-      { id: 'a26_c2', label: 'Declaración formal de suspensión de la validez del certificado aprobatorio', tipo: 'cumple-nocumple' }
-    ]
-  }
-];
-
-// Seed de investigaciones de prueba para mejorar la experiencia interactiva
-const seedInvestigaciones = (): Investigacion[] => [
+// ============================================================================
+// SEED DATA: DOCUMENTOS Y ASIGNACIONES
+// ============================================================================
+const seedDocumentos = (): Documento[] => [
   {
     id: 'inv-seed-001',
     codigo: 'CEISH-2026-0001',
+    tipoDocumentoId: 'tipo-investigacion',
     tema: 'Uso de pantallas y desarrollo lingüístico en infantes',
     descripcion: 'Análisis descriptivo del impacto del tiempo frente a pantallas en el vocabulario expresivo en niños de 2 a 4 años.',
     investigadorId: 'c0000000-0000-0000-0000-000000000001', // Juan Pérez
-    autores: ['Juan Pérez', 'Dra. María Andrade'],
+    autores: [
+      { cedula: 'c0000000-0000-0000-0000-000000000001', nombre: 'Juan Pérez' },
+      { cedula: '9999999999', nombre: 'Dra. María Andrade' }
+    ],
     riesgoDeclarado: 'sin-riesgo',
     miembrosCeishDeclarados: [],
     estado: 'creada',
@@ -121,10 +71,13 @@ const seedInvestigaciones = (): Investigacion[] => [
   {
     id: 'inv-seed-002',
     codigo: 'CEISH-2026-0002',
+    tipoDocumentoId: 'tipo-investigacion',
     tema: 'Percepción docente sobre la educación inclusiva',
     descripcion: 'Estudio de encuesta para medir actitudes y barreras percibidas por docentes de secundaria ante la inclusión educativa.',
     investigadorId: 'c0000000-0000-0000-0000-000000000002', // María López
-    autores: ['María López', 'Mag. Carlos Estévez'],
+    autores: [
+      { cedula: 'c0000000-0000-0000-0000-000000000002', nombre: 'María López' }
+    ],
     riesgoDeclarado: 'sin-riesgo',
     miembrosCeishDeclarados: [],
     estado: 'estratificacion',
@@ -132,7 +85,7 @@ const seedInvestigaciones = (): Investigacion[] => [
       {
         id: 'ver-seed-002',
         documentName: 'Protocolo_Inclusion_Final.pdf',
-        documentPath: 'mock/seed-proyecto-final-juan.pdf', // Reusamos el pdf seed por simplicidad en el visor
+        documentPath: 'mock/seed-proyecto-final-juan.pdf',
         comment: 'Se solicita revisión de exención ética.',
         uploadedAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
       }
@@ -158,25 +111,115 @@ const seedInvestigaciones = (): Investigacion[] => [
 const seedAsignaciones = (): AsignacionCEISH[] => [
   {
     id: 'asig-seed-002',
-    investigacionId: 'inv-seed-002',
+    documentoId: 'inv-seed-002',
     evaluadorId: 'b0000000-0000-0000-0000-000000000001', // Profesor Demo
-    tipoRevision: 'estratificacion',
+    seccionId: 'sec-estratificacion',
     assignedAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
     active: true
   }
 ];
 
+// ============================================================================
+// FUNCIONES AUXILIARES PURAS (Orquestación atómica del Estado)
+// ============================================================================
+interface SeccionInput {
+  id?: string;
+  nombre: string;
+  orden: number;
+  anexos: AnexoAsignado[];
+}
+
+const addAnexoTemplateToState = (
+  state: CeishState,
+  numero: number,
+  nombre: string,
+  rol: 'investigador' | 'evaluador',
+  preguntasInput: Omit<Pregunta, 'id'>[],
+  customId?: string
+): Partial<CeishState> => {
+  const id = customId || `anexo-${generateUUID()}`;
+  const preguntas: Pregunta[] = preguntasInput.map((p, idx) => ({
+    id: `preg-${generateUUID()}`,
+    texto: p.texto,
+    tipo: p.tipo,
+    descripcionContexto: p.descripcionContexto,
+    orden: p.orden ?? idx + 1
+  }));
+
+  const nuevoTemplate: AnexoTemplate = { id, numero, nombre, rol, preguntas };
+  return {
+    anexosTemplates: [...state.anexosTemplates, nuevoTemplate]
+  };
+};
+
+const addTipoDocumentoToState = (
+  state: CeishState,
+  nombre: string,
+  seccionesInput: SeccionInput[],
+  customId?: string
+): Partial<CeishState> => {
+  const id = customId || `tipo-doc-${generateUUID()}`;
+  const secciones: Seccion[] = seccionesInput.map((sec, idx) => ({
+    id: sec.id || `sec-${generateUUID()}`,
+    nombre: sec.nombre,
+    orden: sec.orden ?? idx + 1,
+    anexos: sec.anexos
+  }));
+
+  const nuevoTipo: TipoDocumento = { id, nombre, secciones };
+  return {
+    tiposDocumento: [...state.tiposDocumento, nuevoTipo]
+  };
+};
+
+// ============================================================================
+// INTERFAZ DE ESTADO Y ACCIONES CEISH
+// ============================================================================
 interface CeishState {
-  investigaciones: Investigacion[];
-  anexosEmitidos: EmisionAnexo[];
+  anexosTemplates: AnexoTemplate[];
+  tiposDocumento: TipoDocumento[];
+  documentos: Documento[];
+  respuestasAnexos: RespuestaAnexo[];
   asignaciones: AsignacionCEISH[];
-  templates: AnexoTemplate[];
-  
-  // Acciones
-  crearInvestigacion: (
+  escalamientos: Escalamiento[];
+  notificaciones: Notificacion[];
+
+  // CRUD Configuración Anexos
+  crearAnexoTemplate: (
+    numero: number,
+    nombre: string,
+    rol: 'investigador' | 'evaluador',
+    preguntas: Omit<Pregunta, 'id'>[],
+    customId?: string
+  ) => void;
+  editarAnexoTemplate: (
+    id: string,
+    numero: number,
+    nombre: string,
+    rol: 'investigador' | 'evaluador',
+    preguntas: (Omit<Pregunta, 'id'> & { id?: string })[]
+  ) => void;
+  eliminarAnexoTemplate: (id: string) => void;
+
+  // CRUD Configuración Tipos de Documento
+  crearTipoDocumento: (
+    nombre: string,
+    secciones: SeccionInput[],
+    customId?: string
+  ) => void;
+  editarTipoDocumento: (
+    id: string,
+    nombre: string,
+    secciones: SeccionInput[]
+  ) => void;
+  eliminarTipoDocumento: (id: string) => void;
+
+  // Acciones Operativas Trámite
+  crearDocumento: (
+    tipoDocumentoId: string,
     tema: string,
     descripcion: string,
-    autores: string[],
+    autores: Autor[],
     riesgoDeclarado: RiesgoTipo,
     miembrosCeishDeclarados: string[],
     investigadorId: string,
@@ -184,38 +227,194 @@ interface CeishState {
     documentName: string,
     documentPath: string
   ) => void;
-  
-  solicitarRevision: (investigacionId: string, solicitanteNombre: string) => void;
-  
-  guardarBorradorAnexo: (emision: Omit<EmisionAnexo, 'id' | 'emitidoAt'>) => void;
-  
+
+  solicitarRevision: (documentoId: string, solicitanteNombre: string) => void;
+
+  guardarRespuestaAnexo: (
+    emision: Omit<RespuestaAnexo, 'id' | 'emitidoAt' | 'resultado' | 'snapshotPreguntas'>
+  ) => void;
+
   emitirAnexo: (
-    emision: Omit<EmisionAnexo, 'id' | 'emitidoAt' | 'resultado'>,
-    resultado: EmisionAnexo['resultado'],
-    nuevoEstado: InvestigacionEstado,
+    emision: Omit<RespuestaAnexo, 'id' | 'emitidoAt' | 'resultado' | 'snapshotPreguntas'>,
+    resultado: RespuestaAnexo['resultado'],
+    nuevoEstado: DocumentoEstado,
     cambioComentario?: string,
     nuevoRiesgoConfirmado?: RiesgoTipo
   ) => void;
-  
+
   darseDeBajaRevisor: (
-    investigacionId: string,
+    documentoId: string,
     evaluadorId: string,
     evaluadorNombre: string,
     comentarioConflicto: string
   ) => void;
-  
+
+  subirCorreccion: (
+    documentoId: string,
+    documentName: string,
+    documentPath: string,
+    investigadorNombre: string
+  ) => void;
+
+  crearNotificacion: (destinatarioId: string, mensaje: string, tipo?: Notificacion['tipo']) => void;
+  marcarNotificacionLeida: (id: string) => void;
+
+  crearEscalamiento: (
+    documentoId: string,
+    seccionId: string,
+    anexoTemplateId: string,
+    comentarioEvaluador: string,
+    respuestaAnexoId: string
+  ) => void;
+  resolverEscalamiento: (id: string, edicionAdmin: string) => void;
+
   resetearDatos: () => void;
 }
 
+// ============================================================================
+// STORE IMPLEMENTATION
+// ============================================================================
 export const useCeishStore = create<CeishState>()(
   persist(
     (set) => ({
-      investigaciones: seedInvestigaciones(),
-      anexosEmitidos: [],
-      asignaciones: seedAsignaciones(),
-      templates: initialTemplates,
+      anexosTemplates: [],
+      tiposDocumento: [],
+      documentos: [],
+      respuestasAnexos: [],
+      asignaciones: [],
+      escalamientos: [],
+      notificaciones: [],
 
-      crearInvestigacion: (
+      // CRUD Anexos
+      crearAnexoTemplate: (numero, nombre, rol, preguntas, customId) => set((state) => ({
+        ...state,
+        ...addAnexoTemplateToState(state, numero, nombre, rol, preguntas, customId)
+      })),
+
+      editarAnexoTemplate: (id, numero, nombre, rol, preguntasInput) => set((state) => {
+        const idx = state.anexosTemplates.findIndex(t => t.id === id);
+        if (idx === -1) return {};
+
+        const oldTemplate = state.anexosTemplates[idx];
+        const nuevasPreguntas: Pregunta[] = preguntasInput.map((p, pIdx) => ({
+          id: p.id || `preg-${generateUUID()}`,
+          texto: p.texto,
+          tipo: p.tipo,
+          descripcionContexto: p.descripcionContexto,
+          orden: p.orden ?? pIdx + 1
+        }));
+
+        const nuevoTemplate: AnexoTemplate = { ...oldTemplate, numero, nombre, rol, preguntas: nuevasPreguntas };
+        const nuevosTemplates = [...state.anexosTemplates];
+        nuevosTemplates[idx] = nuevoTemplate;
+
+        // Reglas de Congelamiento v3 (Sección 7):
+        // Identificar documentos activos (excluyendo cerrados: aprobada o anulada)
+        const docsActivos = state.documentos.filter(d => d.estado !== 'aprobada' && d.estado !== 'anulada');
+        const docsActivosIds = docsActivos.map(d => d.id);
+
+        let nuevasRespuestas = [...state.respuestasAnexos];
+        let nuevasNotificaciones = [...state.notificaciones];
+
+        nuevasRespuestas = nuevasRespuestas.map(resp => {
+          if (resp.anexoTemplateId === id && docsActivosIds.includes(resp.documentoId)) {
+            // Filtrar respuestas a preguntas que fueron eliminadas o modificadas
+            const valoresFiltrados = resp.valores.filter(val => {
+              const nuevaPreg = nuevasPreguntas.find(p => p.id === val.campoId);
+              const viejaPreg = oldTemplate.preguntas.find(p => p.id === val.campoId);
+              if (!nuevaPreg) return false; // Pregunta borrada
+              if (viejaPreg && viejaPreg.texto !== nuevaPreg.texto) return false; // Pregunta con texto editado
+              return true;
+            });
+
+            const huboCambios = valoresFiltrados.length !== resp.valores.length;
+            if (huboCambios) {
+              const doc = docsActivos.find(d => d.id === resp.documentoId);
+              nuevasNotificaciones.push({
+                id: generateUUID(),
+                tipo: 'automatica',
+                destinatarioId: resp.emitidoPorId,
+                mensaje: `El Administrador modificó preguntas del Anexo ${numero} (${nombre}) en el proyecto ${doc?.codigo}. Las respuestas afectadas han sido liquidadas del registro para auditoría.`,
+                leida: false,
+                createdAt: new Date().toISOString()
+              });
+            }
+
+            return {
+              ...resp,
+              valores: valoresFiltrados
+            };
+          }
+          return resp;
+        });
+
+        return {
+          anexosTemplates: nuevosTemplates,
+          respuestasAnexos: nuevasRespuestas,
+          notificaciones: nuevasNotificaciones
+        };
+      }),
+
+      eliminarAnexoTemplate: (id) => set((state) => {
+        const nuevosTemplates = state.anexosTemplates.filter(t => t.id !== id);
+        
+        // Remover de secciones de TipoDocumento
+        const nuevosTipos = state.tiposDocumento.map(tipo => ({
+          ...tipo,
+          secciones: tipo.secciones.map(sec => ({
+            ...sec,
+            anexos: sec.anexos.filter(a => a.anexoTemplateId !== id)
+          }))
+        }));
+
+        // Limpiar respuestas asociadas en documentos en proceso
+        const docsActivosIds = state.documentos
+          .filter(d => d.estado !== 'aprobada' && d.estado !== 'anulada')
+          .map(d => d.id);
+
+        const nuevasRespuestas = state.respuestasAnexos.filter(
+          resp => !(resp.anexoTemplateId === id && docsActivosIds.includes(resp.documentoId))
+        );
+
+        return {
+          anexosTemplates: nuevosTemplates,
+          tiposDocumento: nuevosTipos,
+          respuestasAnexos: nuevasRespuestas
+        };
+      }),
+
+      // CRUD Tipos de Documento
+      crearTipoDocumento: (nombre, secciones, customId) => set((state) => ({
+        ...state,
+        ...addTipoDocumentoToState(state, nombre, secciones, customId)
+      })),
+
+      editarTipoDocumento: (id, nombre, seccionesInput) => set((state) => {
+        const idx = state.tiposDocumento.findIndex(t => t.id === id);
+        if (idx === -1) return {};
+
+        const secciones: Seccion[] = seccionesInput.map((sec, sIdx) => ({
+          id: sec.id || `sec-${generateUUID()}`,
+          nombre: sec.nombre,
+          orden: sec.orden ?? sIdx + 1,
+          anexos: sec.anexos
+        }));
+
+        const nuevosTipos = [...state.tiposDocumento];
+        nuevosTipos[idx] = { id, nombre, secciones };
+
+        return {
+          tiposDocumento: nuevosTipos
+        };
+      }),
+
+      eliminarTipoDocumento: (id) => set((state) => ({
+        tiposDocumento: state.tiposDocumento.filter(t => t.id !== id)
+      })),
+
+      // Acciones Operativas Trámite
+      crearDocumento: (
+        tipoDocumentoId,
         tema,
         descripcion,
         autores,
@@ -227,7 +426,7 @@ export const useCeishStore = create<CeishState>()(
         documentPath
       ) => set((state) => {
         const id = generateUUID();
-        const correlativo = String(state.investigaciones.length + 1).padStart(4, '0');
+        const correlativo = String(state.documentos.length + 1).padStart(4, '0');
         const codigo = `CEISH-2026-${correlativo}`;
         const timestamp = new Date().toISOString();
 
@@ -235,13 +434,14 @@ export const useCeishStore = create<CeishState>()(
           id: generateUUID(),
           documentName,
           documentPath,
-          comment: 'Documento inicial cargado al crear la investigación.',
+          comment: 'Documento inicial cargado al registrar el trámite.',
           uploadedAt: timestamp
         };
 
-        const nuevaInv: Investigacion = {
+        const nuevoDoc: Documento = {
           id,
           codigo,
+          tipoDocumentoId,
           tema,
           descripcion,
           investigadorId,
@@ -255,103 +455,117 @@ export const useCeishStore = create<CeishState>()(
               estado: 'creada',
               changedAt: timestamp,
               changedBy: investigadorNombre,
-              comment: 'Investigación creada en borrador.'
+              comment: 'Trámite registrado e iniciado.'
             }
           ],
           createdAt: timestamp
         };
 
         return {
-          investigaciones: [...state.investigaciones, nuevaInv]
+          documentos: [...state.documentos, nuevoDoc]
         };
       }),
 
-      solicitarRevision: (investigacionId, solicitanteNombre) => set((state) => {
+      solicitarRevision: (documentoId, solicitanteNombre) => set((state) => {
         const timestamp = new Date().toISOString();
-        
-        // 1. Encontrar investigación
-        const invIdx = state.investigaciones.findIndex(i => i.id === investigacionId);
-        if (invIdx === -1) return {};
+        const docIdx = state.documentos.findIndex(d => d.id === documentoId);
+        if (docIdx === -1) return {};
 
-        const inv = state.investigaciones[invIdx];
-        
-        // 2. Seleccionar un evaluador aleatorio excluyendo a los declarados en conflicto
-        // Se asume la lista de evaluadores conocidos del sistema para el mock
+        const doc = state.documentos[docIdx];
+        const tipoDoc = state.tiposDocumento.find(t => t.id === doc.tipoDocumentoId);
+        if (!tipoDoc) return {};
+
+        // Seccion activa dinámica para la asignación (usualmente la segunda sección tras creación)
+        const seccionAsignada = tipoDoc.secciones[1];
+        if (!seccionAsignada) return {};
+
+        // Detección automática de conflictos de interés
+        // Se cruzan las cédulas de los autores contra los evaluadores registrados
         const evaluadoresSistema = [
-          { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo' },
-          { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH' },
-          { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia' }
+          { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo', cedula: 'b0000000-0000-0000-0000-000000000001' },
+          { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH', cedula: 'b0000000-0000-0000-0000-000000000002' },
+          { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia', cedula: 'b0000000-0000-0000-0000-000000000003' }
         ];
 
-        // Filtrar evaluadores que NO estén en conflicto
+        // Cruzar y recopilar exclusiones automáticas por cédula
+        const exclusionesCopia = [...doc.miembrosCeishDeclarados];
+        doc.autores.forEach(autor => {
+          const evalCoincidente = evaluadoresSistema.find(ev => ev.cedula === autor.cedula);
+          if (evalCoincidente && !exclusionesCopia.includes(evalCoincidente.id)) {
+            exclusionesCopia.push(evalCoincidente.id);
+          }
+        });
+
         const evaluadoresDisponibles = evaluadoresSistema.filter(
-          ev => !inv.miembrosCeishDeclarados.includes(ev.id)
+          ev => !exclusionesCopia.includes(ev.id)
         );
 
         if (evaluadoresDisponibles.length === 0) {
-          throw new Error('No existen evaluadores disponibles sin conflicto de interés en la plataforma.');
+          throw new Error('No existen evaluadores disponibles sin conflicto de interés en la plataforma para este proyecto.');
         }
 
-        // Selección aleatoria
         const randomIdx = Math.floor(Math.random() * evaluadoresDisponibles.length);
         const evaluadorSeleccionado = evaluadoresDisponibles[randomIdx];
 
-        // 3. Crear asignación
         const nuevaAsignacion: AsignacionCEISH = {
           id: generateUUID(),
-          investigacionId,
+          documentoId,
           evaluadorId: evaluadorSeleccionado.id,
-          tipoRevision: 'estratificacion',
+          seccionId: seccionAsignada.id,
           assignedAt: timestamp,
           active: true
         };
 
-        // 4. Modificar la investigación
-        const invActualizada: Investigacion = {
-          ...inv,
+        const docActualizado: Documento = {
+          ...doc,
           estado: 'estratificacion',
+          miembrosCeishDeclarados: exclusionesCopia,
           historialEstados: [
-            ...inv.historialEstados,
+            ...doc.historialEstados,
             {
               estado: 'estratificacion',
               changedAt: timestamp,
               changedBy: solicitanteNombre,
-              comment: `Solicitud enviada a revisión. Revisor asignado de forma aleatoria y ciega.`
+              comment: 'Solicitud enviada a revisión. Revisor asignado automáticamente por asignación ciega.'
             }
           ]
         };
 
-        const nuevasInvestigaciones = [...state.investigaciones];
-        nuevasInvestigaciones[invIdx] = invActualizada;
+        const nuevosDocs = [...state.documentos];
+        nuevosDocs[docIdx] = docActualizado;
 
         return {
-          investigaciones: nuevasInvestigaciones,
+          documentos: nuevosDocs,
           asignaciones: [...state.asignaciones, nuevaAsignacion]
         };
       }),
 
-      guardarBorradorAnexo: (emision) => set((state) => {
-        // Buscar si ya existe una emisión borrador para esta investigación y plantilla
-        const index = state.anexosEmitidos.findIndex(
-          ae => ae.investigacionId === emision.investigacionId && ae.anexoId === emision.anexoId
+      guardarRespuestaAnexo: (emision) => set((state) => {
+        const index = state.respuestasAnexos.findIndex(
+          re => re.documentoId === emision.documentoId && re.anexoTemplateId === emision.anexoTemplateId && re.versionArchivoId === emision.versionArchivoId
         );
 
+        const template = state.anexosTemplates.find(t => t.id === emision.anexoTemplateId);
+        if (!template) return {};
+
         const timestamp = new Date().toISOString();
-        const nuevaEmision: EmisionAnexo = {
+        const nuevaResp: RespuestaAnexo = {
           ...emision,
-          id: index !== -1 ? state.anexosEmitidos[index].id : generateUUID(),
-          emitidoAt: timestamp
+          id: index !== -1 ? state.respuestasAnexos[index].id : generateUUID(),
+          emitidoAt: timestamp,
+          resultado: 'coincide', // Valor por defecto para borrador
+          snapshotPreguntas: template.preguntas
         };
 
-        const nuevosAnexos = [...state.anexosEmitidos];
+        const nuevasRespuestas = [...state.respuestasAnexos];
         if (index !== -1) {
-          nuevosAnexos[index] = nuevaEmision;
+          nuevasRespuestas[index] = nuevaResp;
         } else {
-          nuevosAnexos.push(nuevaEmision);
+          nuevasRespuestas.push(nuevaResp);
         }
 
         return {
-          anexosEmitidos: nuevosAnexos
+          respuestasAnexos: nuevasRespuestas
         };
       }),
 
@@ -359,74 +573,92 @@ export const useCeishStore = create<CeishState>()(
         const timestamp = new Date().toISOString();
         const emisionId = generateUUID();
 
-        // 1. Registrar emisión oficial
-        const nuevaEmision: EmisionAnexo = {
+        const template = state.anexosTemplates.find(t => t.id === emision.anexoTemplateId);
+        if (!template) return {};
+
+        // 1. Registrar emisión oficial con snapshot congelado de preguntas
+        const nuevaResp: RespuestaAnexo = {
           ...emision,
           id: emisionId,
           emitidoAt: timestamp,
-          resultado
+          resultado,
+          snapshotPreguntas: template.preguntas
         };
 
-        // Filtrar algún borrador previo de este mismo anexo/proyecto para limpiarlo
-        const filtradosAnexos = state.anexosEmitidos.filter(
-          ae => !(ae.investigacionId === emision.investigacionId && ae.anexoId === emision.anexoId)
+        // Limpiar algún borrador previo para esta versión/anexo/proyecto
+        const filtradasResp = state.respuestasAnexos.filter(
+          re => !(re.documentoId === emision.documentoId && re.anexoTemplateId === emision.anexoTemplateId && re.versionArchivoId === emision.versionArchivoId)
         );
 
-        // 2. Modificar el estado de la investigación
-        const invIdx = state.investigaciones.findIndex(i => i.id === emision.investigacionId);
-        if (invIdx === -1) return {};
+        // 2. Actualizar estado y cronómetro del documento
+        const docIdx = state.documentos.findIndex(d => d.id === emision.documentoId);
+        if (docIdx === -1) return {};
 
-        const inv = state.investigaciones[invIdx];
-        
-        const cronometroActualizado = nuevoEstado === 'aprobada' 
-          ? { fechaAprobacion: timestamp, diasEjecucion: 365 } // 365 días por defecto
-          : inv.cronometro;
+        const doc = state.documentos[docIdx];
+        const cronometroActualizado = nuevoEstado === 'aprobada'
+          ? { fechaAprobacion: timestamp, diasEjecucion: 365 }
+          : doc.cronometro;
 
-        const invActualizada: Investigacion = {
-          ...inv,
+        // ====================================================================
+        // COMENTARIO DE CONTROL DE ARQUITECTURA (LIMITACIÓN CONSCIENTE DEL PROTOTIPO):
+        // Los disparadores automáticos a continuación están mapeados de forma estática
+        // por 'anexoTemplateId' específico (anexo-27, anexo-11, etc.). Si el
+        // administrador configura un nuevo tipo de documento con diferentes anexos,
+        // estas transiciones específicas de negocio deberán programarse a mano en
+        // esta sección de código, ya que esta fase no incluye un motor de reglas.
+        // ====================================================================
+        const invActualizada: Documento = {
+          ...doc,
           estado: nuevoEstado,
-          riesgoConfirmado: nuevoRiesgoConfirmado ? nuevoRiesgoConfirmado : (emision.anexoId === 'anexo-27' && resultado === 'coincide' ? inv.riesgoDeclarado : inv.riesgoConfirmado),
+          riesgoConfirmado: emision.anexoTemplateId === 'anexo-27' && resultado === 'coincide' ? doc.riesgoDeclarado : (nuevoRiesgoConfirmado || doc.riesgoConfirmado),
           cronometro: cronometroActualizado,
           historialEstados: [
-            ...inv.historialEstados,
+            ...doc.historialEstados,
             {
               estado: nuevoEstado,
               changedAt: timestamp,
               changedBy: emision.emitidoPorNombre,
-              comment: cambioComentario || `Emisión oficial del ${emision.anexoId.toUpperCase()}`
+              comment: cambioComentario || `Emisión oficial del Anexo Template (${emision.anexoTemplateId})`
             }
           ]
         };
 
-        const nuevasInvestigaciones = [...state.investigaciones];
-        nuevasInvestigaciones[invIdx] = invActualizada;
+        const nuevosDocs = [...state.documentos];
+        nuevosDocs[docIdx] = invActualizada;
 
-        // 3. Si se aprueba o anula, desactivamos todas las asignaciones
+        // 3. Desactivar asignaciones si el trámite finaliza (Aprobada / Anulada)
         let nuevasAsignaciones = state.asignaciones;
         if (nuevoEstado === 'aprobada' || nuevoEstado === 'anulada') {
-          nuevasAsignaciones = state.asignaciones.map(asig => 
-            asig.investigacionId === emision.investigacionId ? { ...asig, active: false } : asig
+          nuevasAsignaciones = state.asignaciones.map(asig =>
+            asig.documentoId === emision.documentoId ? { ...asig, active: false } : asig
           );
         }
 
         return {
-          anexosEmitidos: [...filtradosAnexos, nuevaEmision],
-          investigaciones: nuevasInvestigaciones,
+          respuestasAnexos: [...filtradasResp, nuevaResp],
+          documentos: nuevosDocs,
           asignaciones: nuevasAsignaciones
         };
       }),
 
-      darseDeBajaRevisor: (investigacionId, evaluadorId, evaluadorNombre, comentarioConflicto) => set((state) => {
+      darseDeBajaRevisor: (documentoId, evaluadorId, evaluadorNombre, comentarioConflicto) => set((state) => {
         const timestamp = new Date().toISOString();
         const anexo23Id = generateUUID();
 
-        // 1. Crear la emisión simulada de conflicto de interés (Anexo 23)
-        const emisionConflicto: EmisionAnexo = {
+        const template = state.anexosTemplates.find(t => t.id === 'anexo-23');
+        if (!template) return {};
+
+        const docIdx = state.documentos.findIndex(d => d.id === documentoId);
+        if (docIdx === -1) return {};
+        const doc = state.documentos[docIdx];
+
+        // 1. Emitir la baja (Anexo 23)
+        const emisionConflicto: RespuestaAnexo = {
           id: anexo23Id,
-          anexoId: 'anexo-23',
-          investigacionId,
-          etapa: 'estratificacion',
-          versionArchivoId: state.investigaciones.find(i => i.id === investigacionId)?.versionesArchivo.slice(-1)[0]?.id || '',
+          anexoTemplateId: 'anexo-23',
+          documentoId,
+          seccionId: 'sec-estratificacion',
+          versionArchivoId: doc.versionesArchivo.slice(-1)[0]?.id || '',
           emitidoPorId: evaluadorId,
           emitidoPorNombre: evaluadorNombre,
           emitidoAt: timestamp,
@@ -435,32 +667,27 @@ export const useCeishStore = create<CeishState>()(
             { campoId: 'a23_c1', valor: comentarioConflicto },
             { campoId: 'a23_c2', valor: true }
           ],
-          comentariosAnotados: []
+          comentariosAnotados: [],
+          snapshotPreguntas: template.preguntas
         };
 
-        // 2. Dar de baja la asignación actual
+        // 2. Cancelar la asignación actual
         const nuevasAsignaciones = state.asignaciones.map((asig) => {
-          if (asig.investigacionId === investigacionId && asig.evaluadorId === evaluadorId && asig.active) {
+          if (asig.documentoId === documentoId && asig.evaluadorId === evaluadorId && asig.active) {
             return {
               ...asig,
               active: false,
-              bajaMotivo: 'Conflicto de interés declarado.',
+              bajaMotivo: 'Inhibición declarada (Anexo 23).',
               bajaAnexoId: anexo23Id
             };
           }
           return asig;
         });
 
-        // 3. Volver la investigación a estado 'estratificacion' y agregar historial
-        const invIdx = state.investigaciones.findIndex(i => i.id === investigacionId);
-        if (invIdx === -1) return {};
+        // 3. Excluir permanentemente al evaluador
+        const exclusionesActualizadas = Array.from(new Set([...doc.miembrosCeishDeclarados, evaluadorId]));
 
-        const inv = state.investigaciones[invIdx];
-
-        // Añadir el evaluador actual a la exclusión permanente de conflicto para esta investigación
-        const miembrosActualizados = Array.from(new Set([...inv.miembrosCeishDeclarados, evaluadorId]));
-
-        // 4. Reasignar a un nuevo evaluador
+        // 4. Buscar reasignación ciega automática
         const evaluadoresSistema = [
           { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo' },
           { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH' },
@@ -468,11 +695,11 @@ export const useCeishStore = create<CeishState>()(
         ];
 
         const evaluadoresDisponibles = evaluadoresSistema.filter(
-          ev => ev.id !== evaluadorId && !miembrosActualizados.includes(ev.id)
+          ev => ev.id !== evaluadorId && !exclusionesActualizadas.includes(ev.id)
         );
 
         let asignacionFinal = nuevasAsignaciones;
-        let historialComentario = `El revisor se ha dado de baja del proyecto por conflicto de interés (Anexo 23).`;
+        let comentarioHistorial = `El revisor se inhibió del proceso por conflicto de interés (Anexo 23).`;
 
         if (evaluadoresDisponibles.length > 0) {
           const randomIdx = Math.floor(Math.random() * evaluadoresDisponibles.length);
@@ -480,53 +707,249 @@ export const useCeishStore = create<CeishState>()(
 
           const nuevaAsignacion: AsignacionCEISH = {
             id: generateUUID(),
-            investigacionId,
+            documentoId,
             evaluadorId: nuevoEvaluador.id,
-            tipoRevision: 'estratificacion',
+            seccionId: 'sec-estratificacion',
             assignedAt: timestamp,
             active: true
           };
 
           asignacionFinal.push(nuevaAsignacion);
-          historialComentario += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name}.`;
+          comentarioHistorial += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name}.`;
         } else {
-          historialComentario += ` No existen más evaluadores disponibles en la plataforma en este momento.`;
+          comentarioHistorial += ` No existen más revisores disponibles en la plataforma.`;
         }
 
-        const invActualizada: Investigacion = {
-          ...inv,
+        const docActualizado: Documento = {
+          ...doc,
           estado: 'estratificacion',
-          miembrosCeishDeclarados: miembrosActualizados,
+          miembrosCeishDeclarados: exclusionesActualizadas,
           historialEstados: [
-            ...inv.historialEstados,
+            ...doc.historialEstados,
             {
               estado: 'estratificacion',
               changedAt: timestamp,
               changedBy: evaluadorNombre,
-              comment: historialComentario
+              comment: comentarioHistorial
             }
           ]
         };
 
-        const nuevasInvestigaciones = [...state.investigaciones];
-        nuevasInvestigaciones[invIdx] = invActualizada;
+        const nuevosDocs = [...state.documentos];
+        nuevosDocs[docIdx] = docActualizado;
 
         return {
-          anexosEmitidos: [...state.anexosEmitidos, emisionConflicto],
+          respuestasAnexos: [...state.respuestasAnexos, emisionConflicto],
           asignaciones: asignacionFinal,
-          investigaciones: nuevasInvestigaciones
+          documentos: nuevosDocs
         };
       }),
 
-      resetearDatos: () => set(() => ({
-        investigaciones: seedInvestigaciones(),
-        anexosEmitidos: [],
-        asignaciones: seedAsignaciones(),
-        templates: initialTemplates
-      }))
+      subirCorreccion: (documentoId, documentName, documentPath, investigadorNombre) => set((state) => {
+        const timestamp = new Date().toISOString();
+        const docIdx = state.documentos.findIndex(d => d.id === documentoId);
+        if (docIdx === -1) return {};
+
+        const doc = state.documentos[docIdx];
+        
+        const nuevaVersion: VersionArchivo = {
+          id: generateUUID(),
+          documentName,
+          documentPath,
+          comment: 'Nueva versión con correcciones cargadas.',
+          uploadedAt: timestamp
+        };
+
+        // Mantener las asignaciones previas pero reactivarlas en caso de que hubiesen quedado inactivas
+        const asignacionesActualizadas = state.asignaciones.map(asig => {
+          if (asig.documentoId === documentoId && !asig.active && !asig.bajaMotivo) {
+            return { ...asig, active: true };
+          }
+          return asig;
+        });
+
+        const docActualizado: Documento = {
+          ...doc,
+          estado: 'revision-tecnica',
+          versionesArchivo: [...doc.versionesArchivo, nuevaVersion],
+          historialEstados: [
+            ...doc.historialEstados,
+            {
+              estado: 'revision-tecnica',
+              changedAt: timestamp,
+              changedBy: investigadorNombre,
+              comment: 'Investigador subió una nueva versión del archivo para revisión técnica.'
+            }
+          ]
+        };
+
+        const nuevosDocs = [...state.documentos];
+        nuevosDocs[docIdx] = docActualizado;
+
+        return {
+          documentos: nuevosDocs,
+          asignaciones: asignacionesActualizadas
+        };
+      }),
+
+      // Notificaciones
+      crearNotificacion: (destinatarioId, mensaje, tipo = 'automatica') => set((state) => ({
+        notificaciones: [
+          ...state.notificaciones,
+          {
+            id: generateUUID(),
+            tipo,
+            destinatarioId,
+            mensaje,
+            leida: false,
+            createdAt: new Date().toISOString()
+          }
+        ]
+      })),
+
+      marcarNotificacionLeida: (id) => set((state) => ({
+        notificaciones: state.notificaciones.map(n => n.id === id ? { ...n, leida: true } : n)
+      })),
+
+      // Escalamientos
+      crearEscalamiento: (documentoId, seccionId, anexoTemplateId, comentarioEvaluador, respuestaAnexoId) => set((state) => ({
+        escalamientos: [
+          ...state.escalamientos,
+          {
+            id: generateUUID(),
+            respuestaAnexoId,
+            documentoId,
+            seccionId,
+            anexoTemplateId,
+            comentarioEvaluador,
+            estado: 'pendiente',
+            notificado: false,
+            createdAt: new Date().toISOString()
+          }
+        ]
+      })),
+
+      resolverEscalamiento: (id, edicionAdmin) => set((state) => {
+        const idx = state.escalamientos.findIndex(e => e.id === id);
+        if (idx === -1) return {};
+
+        const esc = state.escalamientos[idx];
+        const nuevosEsc = [...state.escalamientos];
+        nuevosEsc[idx] = { ...esc, estado: 'resuelto', edicionAdmin, notificado: true };
+
+        return {
+          escalamientos: nuevosEsc
+        };
+      }),
+
+      // Orquestación limpia del Seed mediante un único set() final
+      resetearDatos: () => set((state) => {
+        let tempState: CeishState = {
+          ...state,
+          anexosTemplates: [],
+          tiposDocumento: [],
+          documentos: seedDocumentos(),
+          respuestasAnexos: [],
+          asignaciones: seedAsignaciones(),
+          escalamientos: [],
+          notificaciones: []
+        };
+
+        // 1. Acumular Anexos 1 a 9 del Investigador
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 1, 'Solicitud de Revisión Técnica', 'investigador', [
+          { texto: 'Título descriptivo del proyecto de investigación', tipo: 'texto-libre', orden: 1 },
+          { texto: 'Breve justificación e hipótesis de trabajo', tipo: 'texto-libre', orden: 2 }
+        ], 'anexo-1') } as CeishState;
+
+        for (let i = 2; i <= 9; i++) {
+          tempState = { ...tempState, ...addAnexoTemplateToState(tempState, i, `Anexo ${i} Formulario de Ficha Ética`, 'investigador', [
+            { texto: `Pregunta declaratoria de cumplimiento Anexo ${i}`, tipo: 'si-no', orden: 1 }
+          ], `anexo-${i}`) } as CeishState;
+        }
+
+        // 2. Acumular Anexos del Evaluador (Estratificación y Evaluación)
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 27, 'Formato para Estratificación de Riesgos', 'evaluador', [
+          { texto: '1. ¿La investigación involucra procedimientos que puedan causar daño físico o psicológico directo al sujeto?', tipo: 'cumple-nocumple', orden: 1 },
+          { texto: '2. ¿Se recolectan datos personales sensibles o información privada de carácter confidencial?', tipo: 'cumple-nocumple', orden: 2 },
+          { texto: '3. ¿Se utilizan muestras biológicas humanas (sangre, tejidos, fluidos)?', tipo: 'cumple-nocumple', orden: 3 },
+          { texto: '4. ¿Involucra poblaciones vulnerables (niños, personas con discapacidad, etc.)?', tipo: 'cumple-nocumple', orden: 4 },
+          { texto: 'Justificación / Criterio final del revisor', tipo: 'texto-libre', orden: 5 }
+        ], 'anexo-27') } as CeishState;
+
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 11, 'Formato de Carta de Exención (Sin Riesgo)', 'evaluador', [
+          { texto: 'Justificación técnica del cumplimiento de criterios de exención ética', tipo: 'texto-libre', orden: 1 },
+          { texto: 'Declaración formal de exención de revisión por el comité CEISH', tipo: 'cumple-nocumple', orden: 2 }
+        ], 'anexo-11') } as CeishState;
+
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 23, 'Declaración de Conflicto de Intereses', 'evaluador', [
+          { texto: 'Describa detalladamente la causa de su conflicto de interés con el proyecto o sus autores', tipo: 'texto-libre', orden: 1 },
+          { texto: 'Declaración juramentada de inhibición en el proceso de evaluación', tipo: 'cumple-nocumple', orden: 2 }
+        ], 'anexo-23') } as CeishState;
+
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 12, 'Check List de Evaluación de Proyecto', 'evaluador', [
+          { texto: 'A. Título de la investigación descriptivo y delimitado', tipo: 'cumple-nocumple', orden: 1 },
+          { texto: 'B. Justificación teórica y empírica del problema de investigación', tipo: 'cumple-nocumple', orden: 2 },
+          { texto: 'C. Objetivos específicos coherentes con el objetivo general', tipo: 'cumple-nocumple', orden: 3 },
+          { texto: 'D. Diseño metodológico adecuado y detallado', tipo: 'cumple-nocumple', orden: 4 },
+          { texto: 'E. Consideraciones éticas aplicables debidamente fundamentadas', tipo: 'cumple-nocumple', orden: 5 },
+          { texto: 'F. Observaciones generales detalladas', tipo: 'texto-libre', orden: 6 }
+        ], 'anexo-12') } as CeishState;
+
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 13, 'Formato para emisión de resoluciones de aprobación', 'evaluador', [
+          { texto: 'Declaración formal de Aprobación Ética y Metodológica', tipo: 'cumple-nocumple', orden: 1 },
+          { texto: 'Términos y condiciones de la aprobación del proyecto', tipo: 'texto-libre', orden: 2 }
+        ], 'anexo-13') } as CeishState;
+
+        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 26, 'Resolución de suspensión o revocatoria', 'evaluador', [
+          { texto: 'Motivos de la suspensión/revocatoria (vencimiento de plazos, faltas éticas, etc.)', tipo: 'texto-libre', orden: 1 },
+          { texto: 'Declaración formal de suspensión de la validez del certificado aprobatorio', tipo: 'cumple-nocumple', orden: 2 }
+        ], 'anexo-26') } as CeishState;
+
+        // 3. Crear el Tipo de Documento "Investigación" asociando las plantillas dinámicas
+        tempState = { ...tempState, ...addTipoDocumentoToState(tempState, 'Investigación', [
+          {
+            id: 'sec-creacion',
+            nombre: 'Etapa 1: Creación de Investigación',
+            orden: 1,
+            anexos: [
+              { anexoTemplateId: 'anexo-1', obligatorio: true },
+              { anexoTemplateId: 'anexo-2', obligatorio: true },
+              { anexoTemplateId: 'anexo-3', obligatorio: true },
+              { anexoTemplateId: 'anexo-4', obligatorio: true },
+              { anexoTemplateId: 'anexo-5', obligatorio: true },
+              { anexoTemplateId: 'anexo-6', obligatorio: true },
+              { anexoTemplateId: 'anexo-7', obligatorio: true },
+              { anexoTemplateId: 'anexo-8', obligatorio: true },
+              { anexoTemplateId: 'anexo-9', obligatorio: true }
+            ]
+          },
+          {
+            id: 'sec-estratificacion',
+            nombre: 'Etapa 2: Estratificación',
+            orden: 2,
+            anexos: [
+              { anexoTemplateId: 'anexo-27', obligatorio: true },
+              { anexoTemplateId: 'anexo-11', obligatorio: true },
+              { anexoTemplateId: 'anexo-23', obligatorio: false }
+            ]
+          },
+          {
+            id: 'sec-evaluacion',
+            nombre: 'Etapa 3: Evaluación',
+            orden: 3,
+            anexos: [
+              { anexoTemplateId: 'anexo-12', obligatorio: true },
+              { anexoTemplateId: 'anexo-13', obligatorio: true },
+              { anexoTemplateId: 'anexo-26', obligatorio: false }
+            ]
+          }
+        ], 'tipo-investigacion') } as CeishState;
+
+        return tempState;
+      })
     }),
     {
-      name: 'ceish-prototype-storage', // Clave única para evitar conflictos en localStorage
+      name: 'ceish-prototype-storage',
     }
   )
 );
