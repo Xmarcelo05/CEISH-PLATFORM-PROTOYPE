@@ -16,7 +16,7 @@ Construir un prototipo funcional interactivo para la rama de investigaciones **"
 |---|---|---|
 | **1.1 Definición de Tipos** | ✅ Completado | Tipos de TypeScript agregados en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts) |
 | **1.2 Store de Simulación (Zustand + Storage)** | ✅ Completado | Store creado en [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts) con la clave `ceish-prototype-storage` y acción `resetearDatos`. |
-| **1.3 Mapeo de Roles en Interfaz** | ⏳ Pendiente | Capa visual en `AppShell` para mostrar labels de Investigador/Revisor/Admin. |
+| **1.3 Mapeo de Roles en Interfaz** | ✅ Completado | Labels visuales actualizados en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) (Investigador, Revisor, Administrador). |
 
 ### 📝 Fase 2: Flujo del Investigador (Crear e Historial)
 | Tarea | Estado | Descripción / Entregable |
@@ -43,4 +43,6 @@ Construir un prototipo funcional interactivo para la rama de investigaciones **"
   * Clasificación de archivos legacy frente a los nuevos que se van a agregar.
   * Creación del archivo de seguimiento [CEISH_AVANCE.md](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/CEISH_AVANCE.md).
   * **Tarea 1.1 y 1.2 completadas:** Adición de tipos TypeScript específicos para CEISH en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts) y creación del store de Zustand interactivo [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts) persistido con `localStorage`.
+  * **Tarea 1.3 completada:** Labels visuales actualizados en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) para mapear dinámicamente los roles ('Estudiante' -> 'Investigador', 'Evaluador' -> 'Revisor') y los ítems de navegación en el sidebar.
+
 

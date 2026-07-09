@@ -12,7 +12,7 @@ interface NavItem {
 const STUDENT_NAV: NavItem[] = [
   {
     to: '/estudiante',
-    label: 'Mi entrega',
+    label: 'Mis investigaciones',
     icon: (
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
         <path d="M4 2h10a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V4a2 2 0 012-2z" stroke="currentColor" strokeWidth="1.5" />
@@ -25,7 +25,7 @@ const STUDENT_NAV: NavItem[] = [
 const EVALUATOR_NAV: NavItem[] = [
   {
     to: '/evaluador',
-    label: 'Mis estudiantes',
+    label: 'Mis revisiones',
     icon: (
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
         <circle cx="9" cy="6" r="3" stroke="currentColor" strokeWidth="1.5" />
@@ -60,7 +60,7 @@ const ADMIN_NAV: NavItem[] = [
 ];
 
 const ROLE_NAV = { student: STUDENT_NAV, evaluator: EVALUATOR_NAV, admin: ADMIN_NAV };
-const ROLE_LABEL = { student: 'Estudiante', evaluator: 'Evaluador', admin: 'Administrador' };
+const ROLE_LABEL = { student: 'Investigador', evaluator: 'Revisor', admin: 'Administrador' };
 
 export function AppShell() {
   const { currentUser, logout } = useAuthStore();
