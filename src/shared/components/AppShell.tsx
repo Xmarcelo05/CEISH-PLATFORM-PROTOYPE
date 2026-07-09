@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { useCeishStore } from '../../store/ceishStore';
 import { cn } from '../../utils/cn';
 import '../styles/platform.css';
 
@@ -109,6 +110,24 @@ export function AppShell() {
             <p className="shell__user-name">{currentUser.name}</p>
             <p className="shell__user-role">{ROLE_LABEL[currentUser.role]}</p>
           </div>
+          <button 
+            className="shell__logout" 
+            onClick={() => {
+              if (window.confirm('¿Deseas restablecer todos los datos del prototipo CEISH? Esto borrará el historial de pruebas.')) {
+                useCeishStore.getState().resetearDatos();
+                window.location.reload();
+              }
+            }} 
+            title="Restablecer prototipo"
+            style={{ marginRight: '8px', color: '#eab308' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+              <path d="M16 3h5v5" />
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+              <path d="M8 21H3v-5" />
+            </svg>
+          </button>
           <button className="shell__logout" onClick={handleLogout} title="Cerrar sesión">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M10 2h2a2 2 0 012 2v8a2 2 0 01-2 2h-2M7 11l3-3-3-3M10 8H4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />

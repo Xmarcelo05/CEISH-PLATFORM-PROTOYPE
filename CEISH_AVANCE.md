@@ -21,8 +21,8 @@ Construir un prototipo funcional interactivo para la rama de investigaciones **"
 ### 📝 Fase 2: Flujo del Investigador (Crear e Historial)
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
-| **2.1 Formulario de Creación** | ⏳ Pendiente | Formulario con tema, descripción, co-autores, riesgo y conflictos en `SubmissionPage`. |
-| **2.2 Historial del Investigador** | ⏳ Pendiente | Listado de investigaciones del usuario con su código único y estado actual. |
+| **2.1 Formulario de Creación** | ✅ Completado | Formulario creado en [CrearInvestigacionModal.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/CrearInvestigacionModal.tsx) capturando título, descripción, co-autores, riesgo y conflictos. |
+| **2.2 Historial del Investigador** | ✅ Completado | Vista de listado en [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) con código único, estado, timeline e integración con el cache temporal en memoria para archivos PDF. |
 
 ### 🔍 Fase 3: Flujo del Revisor (Estratificación - Etapa 1)
 | Tarea | Estado | Descripción / Entregable |
@@ -44,5 +44,8 @@ Construir un prototipo funcional interactivo para la rama de investigaciones **"
   * Creación del archivo de seguimiento [CEISH_AVANCE.md](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/CEISH_AVANCE.md).
   * **Tarea 1.1 y 1.2 completadas:** Adición de tipos TypeScript específicos para CEISH en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts) y creación del store de Zustand interactivo [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts) persistido con `localStorage`.
   * **Tarea 1.3 completada:** Labels visuales actualizados en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) para mapear dinámicamente los roles ('Estudiante' -> 'Investigador', 'Evaluador' -> 'Revisor') y los ítems de navegación en el sidebar.
+  * **Tarea 2.1 y 2.2 completadas:** Rediseño completo de la interfaz del Investigador en [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) para listar proyectos, ver su línea de tiempo, resoluciones emitidas y simular la subida segura de PDFs en cache de sesión ([fileCache.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/fileCache.ts)). Creación del formulario de registro interactivo en [CrearInvestigacionModal.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/CrearInvestigacionModal.tsx).
+  * **Botón de Reset del Prototipo:** Añadido botón físico de reinicio del estado del prototipo (icono de recarga amarillo) en la barra de usuario en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx).
+
 
 
