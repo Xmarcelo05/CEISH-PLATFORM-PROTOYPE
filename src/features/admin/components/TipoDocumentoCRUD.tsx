@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useCeishStore } from '../../../store/ceishStore';
-import type { TipoDocumento, Seccion, AnexoAsignado } from '../../../shared/types/platform.types';
+import type { TipoDocumento, AnexoAsignado } from '../../../shared/types/platform.types';
 
 interface SeccionLocal {
   id?: string;

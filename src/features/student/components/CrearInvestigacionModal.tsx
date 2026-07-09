@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useCeishStore } from '../../../store/ceishStore';
 import { ceishFileCache } from '../../../store/fileCache';
+import type { Autor } from '../../../shared/types/platform.types';
 import '../../student/student.css';
 
 interface Props {
@@ -9,18 +10,23 @@ interface Props {
   investigadorNombre: string;
 }
 
-const EVALUADORES_CEISH = [
-  { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo', cargo: 'Presidente del Comité' },
-  { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH', cargo: 'Secretario CEISH' },
-  { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia', cargo: 'Vocal Técnico' }
+// Usuarios registrados simulados en la base de datos (con cédula para autocompletado)
+const USUARIOS_REGISTRADOS = [
+  { id: 'c0000000-0000-0000-0000-000000000001', name: 'Juan Pérez', cedula: 'c0000000-0000-0000-0000-000000000001', role: 'student' },
+  { id: 'c0000000-0000-0000-0000-000000000002', name: 'María López', cedula: 'c0000000-0000-0000-0000-000000000002', role: 'student' },
+  { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo', cedula: 'b0000000-0000-0000-0000-000000000001', role: 'evaluator', cargo: 'Presidente del Comité' },
+  { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH', cedula: 'b0000000-0000-0000-0000-000000000002', role: 'evaluator', cargo: 'Secretario CEISH' },
+  { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia', cedula: 'b0000000-0000-0000-0000-000000000003', role: 'evaluator', cargo: 'Vocal Técnico' },
+  { id: 'a0000000-0000-0000-0000-000000000001', name: 'Coordinador Admin', cedula: 'a0000000-0000-0000-0000-000000000001', role: 'admin' }
 ];
 
 export function CrearInvestigacionModal({ onCancel, investigadorId, investigadorNombre }: Props) {
-  const crearInvestigacion = useCeishStore((s) => s.crearInvestigacion);
+  const { crearDocumento } = useCeishStore();
 
   const [tema, setTema] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [autores, setAutores] = useState<string[]>(['']); // El autor principal se asume cargador, co-autores dinámicos
+  // Autores ahora guardan un arreglo de objetos Autor (cédula, nombre)
+  const [autores, setAutores] = useState<Autor[]>([]); 
   const [riesgo, setRiesgo] = useState<'sin-riesgo' | 'riesgo-minimo' | 'riesgo-mayor'>('sin-riesgo');
   const [conflictos, setConflictos] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -29,18 +35,34 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Manejar adición de autores
-  const addAutorField = () => setAutores([...autores, '']);
+  const addAutorField = () => setAutores([...autores, { cedula: '', nombre: '' }]);
+  
   const removeAutorField = (index: number) => {
-    const updated = autores.filter((_, i) => i !== index);
-    setAutores(updated.length ? updated : ['']);
+    setAutores(autores.filter((_, i) => i !== index));
   };
-  const handleAutorChange = (index: number, val: string) => {
+
+  const handleCedulaChange = (index: number, cedulaVal: string) => {
     const updated = [...autores];
-    updated[index] = val;
+    // Cruzar contra base de datos registrada para autocompletar nombre
+    const matched = USUARIOS_REGISTRADOS.find(u => u.cedula === cedulaVal.trim());
+    updated[index] = {
+      cedula: cedulaVal,
+      nombre: matched ? matched.name : ''
+    };
     setAutores(updated);
   };
 
-  // Manejar checklist de conflictos
+  const handleNombreChange = (index: number, nombreVal: string) => {
+    const updated = [...autores];
+    // Solo permitir edición del nombre si no coincide con un usuario registrado
+    const matched = USUARIOS_REGISTRADOS.find(u => u.cedula === updated[index].cedula.trim());
+    if (!matched) {
+      updated[index].nombre = nombreVal;
+      setAutores(updated);
+    }
+  };
+
+  // Manejar checklist de conflictos manuales
   const handleConflictToggle = (id: string) => {
     setConflictos(prev =>
       prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]
@@ -77,30 +99,51 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
       return;
     }
 
-    // Filtrar autores vacíos y añadir el nombre del investigador como primer autor
-    const coAutoresFiltrados = autores.filter(a => a.trim() !== '');
-    const listaAutores = [investigadorNombre, ...coAutoresFiltrados];
+    // Filtrar autores vacíos
+    const coAutoresFiltrados = autores.filter(a => a.cedula.trim() !== '');
+
+    // Añadir al investigador principal como primer autor
+    const listaAutores: Autor[] = [
+      { cedula: investigadorId, nombre: investigadorNombre },
+      ...coAutoresFiltrados
+    ];
+
+    // Cruzar las cédulas para verificar conflictos de interés automáticos
+    const conflictosDeclarados = [...conflictos];
+    listaAutores.forEach(autor => {
+      const matchEvaluador = USUARIOS_REGISTRADOS.find(u => u.cedula === autor.cedula && u.role === 'evaluator');
+      if (matchEvaluador && !conflictosDeclarados.includes(matchEvaluador.id)) {
+        conflictosDeclarados.push(matchEvaluador.id);
+      }
+    });
 
     const fileId = 'ver-' + Date.now(); // Generar ID único temporal para el archivo
     
     // Almacenar el archivo PDF en el cache en memoria usando el ID temporal
     ceishFileCache[fileId] = file;
 
-    // Crear la investigación en el store simulado
-    crearInvestigacion(
+    // Buscar tipo de documento semilla "tipo-investigacion"
+    const tipoDocId = 'tipo-investigacion';
+
+    // Crear el documento en el store de simulación
+    crearDocumento(
+      tipoDocId,
       tema.trim(),
       descripcion.trim(),
       listaAutores,
       riesgo,
-      conflictos,
+      conflictosDeclarados,
       investigadorId,
       investigadorNombre,
       file.name,
-      fileId // Guardamos el ID temporal como documentPath
+      fileId
     );
 
     onCancel();
   };
+
+  // Obtener lista de evaluadores para conflictos
+  const evaluadoresCeish = USUARIOS_REGISTRADOS.filter(u => u.role === 'evaluator');
 
   return (
     <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
@@ -145,7 +188,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
               />
             </div>
 
-            {/* Co-autores dinámicos */}
+            {/* Co-autores por Cédula */}
             <div className="modal__field">
               <label className="modal__label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>Co-autores / Colaboradores</span>
@@ -158,37 +201,64 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                   + Agregar Co-autor
                 </button>
               </label>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 8px 0' }}>
-                Nota: Usted ({investigadorNombre}) será registrado automáticamente como el Investigador Principal.
+              <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 8px 0' }}>
+                Nota: Usted ({investigadorNombre}) será registrado con cédula ({investigadorId}) como Investigador Principal.
               </p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {autores.map((autor, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      className="modal__input"
-                      placeholder={`Nombre del co-autor #${idx + 1}`}
-                      value={autor}
-                      onChange={(e) => handleAutorChange(idx, e.target.value)}
-                      style={{ flex: 1, padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeAutorField(idx)}
-                      style={{
-                        background: '#f1f5f9',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        color: '#ef4444'
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {autores.map((autor, idx) => {
+                  const match = USUARIOS_REGISTRADOS.find(u => u.cedula === autor.cedula.trim());
+                  return (
+                    <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <input
+                            type="text"
+                            className="modal__input"
+                            placeholder="Número de Cédula *"
+                            required
+                            value={autor.cedula}
+                            onChange={(e) => handleCedulaChange(idx, e.target.value)}
+                            style={{ flex: 1, padding: '6px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                          />
+                          <input
+                            type="text"
+                            className="modal__input"
+                            placeholder="Nombre del co-autor"
+                            disabled={!!match} // Deshabilitado si se autocompleta
+                            value={match ? match.name : autor.nombre}
+                            onChange={(e) => handleNombreChange(idx, e.target.value)}
+                            style={{ flex: 1.5, padding: '6px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px', background: match ? '#e2e8f0' : 'white' }}
+                          />
+                        </div>
+                        {match ? (
+                          <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                            ✓ Usuario registrado: {match.role === 'evaluator' ? 'Revisor CEISH (Conflicto detectado)' : 'Usuario'}
+                          </span>
+                        ) : autor.cedula.trim() ? (
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            ⚠️ Cédula no registrada (registro manual de nombre)
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeAutorField(idx)}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          cursor: 'pointer',
+                          color: '#ef4444'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -210,30 +280,30 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                     type="radio"
                     name="riesgo"
                     checked={riesgo === 'riesgo-minimo'}
-                    onChange={() => setRiesgo('riesgo-minimo')}
+                    disabled
                   />
-                  <span>Riesgo Mínimo</span>
+                  <span>Riesgo Mínimo (Fuera de alcance)</span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#64748b' }}>
                   <input
                     type="radio"
                     name="riesgo"
                     checked={riesgo === 'riesgo-mayor'}
-                    onChange={() => setRiesgo('riesgo-mayor')}
+                    disabled
                   />
-                  <span>Riesgo Mayor</span>
+                  <span>Riesgo Mayor (Fuera de alcance)</span>
                 </label>
               </div>
             </div>
 
             {/* Declaración de Miembros del CEISH (Conflicto de Interés) */}
             <div className="modal__field">
-              <label className="modal__label">Miembros del CEISH en el Proyecto (Conflicto de Interés)</label>
+              <label className="modal__label">Declaración Manual de Conflictos de Interés</label>
               <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0' }}>
-                Seleccione si alguno de los miembros del comité CEISH listados abajo participa en su investigación como autor, asesor o colaborador. Esto evitará que la plataforma los asigne automáticamente para evaluar su documento.
+                Seleccione si algún otro miembro del comité CEISH (no listado en co-autores) tiene relación familiar, académica o de asesoría con su investigación para excluirlo del sorteo.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
-                {EVALUADORES_CEISH.map((ev) => (
+                {evaluadoresCeish.map((ev) => (
                   <label key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
                     <input
                       type="checkbox"

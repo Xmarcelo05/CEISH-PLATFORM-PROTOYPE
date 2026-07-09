@@ -5,7 +5,7 @@ import './evaluator.css';
 
 export function EvaluatorDashboard() {
   const currentUser = useAuthStore((s) => s.currentUser)!;
-  const { asignaciones, investigaciones } = useCeishStore();
+  const { asignaciones, documentos } = useCeishStore();
   const navigate = useNavigate();
 
   // Filtrar asignaciones activas para este evaluador
@@ -13,14 +13,14 @@ export function EvaluatorDashboard() {
     (asig) => asig.evaluadorId === currentUser.id && asig.active
   );
 
-  // Mapear cada asignación con los detalles de su respectiva investigación
+  // Mapear cada asignación con los detalles de su respectivo documento
   const tareasDeRevision = misAsignaciones.map((asig) => {
-    const inv = investigaciones.find((i) => i.id === asig.investigacionId);
+    const doc = documentos.find((d) => d.id === asig.documentoId);
     return {
       asignacion: asig,
-      investigacion: inv
+      documento: doc
     };
-  }).filter((item) => item.investigacion !== undefined);
+  }).filter((item) => item.documento !== undefined);
 
   const getRiesgoBadge = (riesgo: string) => {
     const badges: Record<string, string> = {
@@ -34,9 +34,9 @@ export function EvaluatorDashboard() {
   const getEstadoBadge = (estado: string) => {
     const badges: Record<string, { text: string; className: string }> = {
       creada: { text: 'Borrador', className: 'eval-badge eval-badge--pending' },
-      estratificacion: { text: 'Etapa 1: Estratificación', className: 'eval-badge eval-badge--in-progress' },
-      'revision-tecnica': { text: 'Etapa 2: Revisión Técnica', className: 'eval-badge' },
-      aprobada: { text: 'Aprobado (Exento)', className: 'eval-badge eval-badge--success' },
+      estratificacion: { text: 'Etapa 2: Estratificación', className: 'eval-badge eval-badge--in-progress' },
+      'revision-tecnica': { text: 'Etapa 3: Revisión Técnica', className: 'eval-badge' },
+      aprobada: { text: 'Aprobada (Exenta)', className: 'eval-badge eval-badge--success' },
       anulada: { text: 'Anulada / Suspendida', className: 'eval-badge eval-badge--rejected' },
     };
     const badge = badges[estado] || { text: estado, className: 'eval-badge' };
@@ -105,12 +105,12 @@ export function EvaluatorDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {tareasDeRevision.map(({ asignacion, investigacion }) => {
-                  if (!investigacion) return null;
+                {tareasDeRevision.map(({ asignacion, documento }) => {
+                  if (!documento) return null;
 
                   const isRiesgoFueraDeAlcance = 
-                    investigacion.riesgoConfirmado === 'riesgo-minimo' || 
-                    investigacion.riesgoConfirmado === 'riesgo-mayor';
+                    documento.riesgoConfirmado === 'riesgo-minimo' || 
+                    documento.riesgoConfirmado === 'riesgo-mayor';
 
                   return (
                     <tr 
@@ -119,18 +119,18 @@ export function EvaluatorDashboard() {
                       className="hover-row"
                     >
                       <td style={{ padding: '14px 8px', fontWeight: 600, fontSize: '13px', color: '#1e293b' }}>
-                        {investigacion.codigo}
+                        {documento.codigo}
                       </td>
                       <td style={{ padding: '14px 8px', maxWidth: '350px' }}>
-                        <p style={{ fontWeight: 500, fontSize: '14px', margin: 0, color: '#0f172a' }}>{investigacion.tema}</p>
+                        <p style={{ fontWeight: 500, fontSize: '14px', margin: 0, color: '#0f172a' }}>{documento.tema}</p>
                       </td>
                       <td style={{ padding: '14px 8px' }}>
-                        <span className={getRiesgoBadge(investigacion.riesgoDeclarado)}>
-                          {investigacion.riesgoDeclarado.replace('-', ' ')}
+                        <span className={getRiesgoBadge(documento.riesgoDeclarado)}>
+                          {documento.riesgoDeclarado.replace('-', ' ')}
                         </span>
                       </td>
                       <td style={{ padding: '14px 8px' }}>
-                        {getEstadoBadge(investigacion.estado)}
+                        {getEstadoBadge(documento.estado)}
                       </td>
                       <td style={{ padding: '14px 8px', fontSize: '12px', color: '#64748b' }}>
                         {new Date(asignacion.assignedAt).toLocaleDateString()}
@@ -153,9 +153,9 @@ export function EvaluatorDashboard() {
                           <button
                             className="eval-btn eval-btn--primary"
                             style={{ padding: '6px 12px', fontSize: '12px' }}
-                            onClick={() => navigate(`/evaluador/revision-ceish/${investigacion.id}`)}
+                            onClick={() => navigate(`/evaluador/revision-ceish/${documento.id}`)}
                           >
-                            {investigacion.estado === 'estratificacion' 
+                            {documento.estado === 'estratificacion' 
                               ? 'Estratificar (Anexo 27)' 
                               : 'Revisar (Anexo 12)'
                             }

@@ -5,54 +5,62 @@ import { useCeishStore } from '../../../store/ceishStore';
 import { ceishFileCache } from '../../../store/fileCache';
 import { usePDFViewer } from '../../evaluation/hooks/usePDFViewer';
 import { PDFViewer } from '../../evaluation/components/PDFViewer/PDFViewer';
-import type { RiesgoTipo } from '../../../shared/types/platform.types';
+import type { 
+  ValorCampo, 
+  ComentarioAnotacion,
+  RiesgoTipo
+} from '../../../shared/types/platform.types';
 import '../../evaluation/evaluation.css';
 import '../evaluator.css';
 
-type Tab = 'info' | 'estratificacion' | 'revision-tecnica';
+type Tab = 'info' | 'evaluacion-dinamica';
 
 export function ReviewCeishPage() {
   const { investigacionId = '' } = useParams<{ investigacionId: string }>();
   const navigate = useNavigate();
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { investigaciones, emitirAnexo, darseDeBajaRevisor } = useCeishStore();
+  const { 
+    documentos, 
+    anexosTemplates, 
+    tiposDocumento, 
+    respuestasAnexos, 
+    emitirAnexo, 
+    guardarRespuestaAnexo, 
+    darseDeBajaRevisor,
+    crearEscalamiento 
+  } = useCeishStore();
 
-  const investigacion = investigaciones.find((i) => i.id === investigacionId);
+  const documento = documentos.find((d) => d.id === investigacionId);
 
+  // Estados locales para la pestaña activa en el panel derecho
+  const [activeTab, setActiveTab] = useState<Tab>('evaluacion-dinamica');
+  // Anexo activo dentro de la etapa
+  const [activeAnexoId, setActiveAnexoId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<Tab>('info');
+  // Respuestas locales para el formulario dinámico del anexo activo
+  const [respuestasForm, setRespuestasForm] = useState<Record<string, any>>({});
 
-  // Estado del Formulario Anexo 27 (Estratificación)
-  const [a27_respuestas, setA27Respuestas] = useState<Record<string, boolean>>({
-    a27_c1: false,
-    a27_c2: false,
-    a27_c3: false,
-    a27_c4: false
-  });
-  const [a27_justificacion, setA27Justificacion] = useState('');
-  const [nuevoRiesgoEleccion, setNuevoRiesgoEleccion] = useState<RiesgoTipo>('riesgo-minimo');
-  const [devolucionComentario, setDevolucionComentario] = useState('');
-  const [conflictoComentario, setConflictoComentario] = useState('');
+  // Estados locales para las anotaciones por página del PDF (Fase 3)
+  const [anotaciones, setAnotaciones] = useState<ComentarioAnotacion[]>([]);
+  const [nuevoComentarioTexto, setNuevoComentarioTexto] = useState('');
 
-  // Estado del Formulario Anexo 12 (Revisión Técnica)
-  const [a12_respuestas, setA12Respuestas] = useState<Record<string, boolean>>({
-    a12_c1: true,
-    a12_c2: true,
-    a12_c3: true,
-    a12_c4: true,
-    a12_c5: true
-  });
-  const [a12_observaciones, setA12Observaciones] = useState('');
-
-  // Modales de Acción
+  // Modales y comentarios de control especial
   const [showConflictoModal, setShowConflictoModal] = useState(false);
+  const [conflictoComentario, setConflictoComentario] = useState('');
+  
   const [showDevolverModal, setShowDevolverModal] = useState(false);
+  const [devolucionComentario, setDevolucionComentario] = useState('');
 
-  // Cargar PDF en el visor si está en memoria
+  const [showEscalarModal, setShowEscalarModal] = useState(false);
+  const [escalamientoComentario, setEscalamientoComentario] = useState('');
+
+  const [nuevoRiesgoEleccion, setNuevoRiesgoEleccion] = useState<RiesgoTipo>('riesgo-minimo');
+
+  // Visor PDF
   const pdf = usePDFViewer();
   const { loadFile } = pdf;
-  const latestVersion = investigacion?.versionesArchivo.slice(-1)[0];
+  const latestVersion = documento?.versionesArchivo.slice(-1)[0];
   const fileObj = latestVersion ? ceishFileCache[latestVersion.documentPath] : null;
 
   useEffect(() => {
@@ -61,738 +69,857 @@ export function ReviewCeishPage() {
     }
   }, [fileObj, loadFile]);
 
-  // Si no se encuentra el proyecto o la asignación no es correcta
-  if (!investigacion) {
+  // Regla de Reset de Estado al cargar una nueva investigación o versión de archivo
+  useEffect(() => {
+    setAnotaciones([]);
+    setNuevoComentarioTexto('');
+    setDevolucionComentario('');
+    setConflictoComentario('');
+    setEscalamientoComentario('');
+    setRespuestasForm({});
+  }, [investigacionId, latestVersion?.id]);
+
+  // Si no se encuentra el documento
+  if (!documento) {
     return (
       <div className="eval-loading">
-        <h2>Proyecto no encontrado</h2>
+        <h2>Trámite no encontrado</h2>
         <button className="eval-btn eval-btn--primary" onClick={() => navigate('/evaluador')}>Volver al Dashboard</button>
       </div>
     );
   }
 
-  // Configurar pestaña por defecto según el estado del proyecto
+  // Obtener el tipo de documento configurado y la sección activa según el estado del trámite
+  const tipoDoc = tiposDocumento.find((t) => t.id === documento.tipoDocumentoId);
+  if (!tipoDoc) {
+    return (
+      <div className="eval-loading">
+        <h2>Tipo de flujo no configurado en la plataforma</h2>
+        <button className="eval-btn eval-btn--primary" onClick={() => navigate('/evaluador')}>Volver al Dashboard</button>
+      </div>
+    );
+  }
+
+  // Determinar dinámicamente la sección activa
+  const activeSeccion = tipoDoc.secciones.find(s => {
+    if (documento.estado === 'estratificacion') return s.id === 'sec-estratificacion';
+    if (documento.estado === 'revision-tecnica') return s.id === 'sec-evaluacion';
+    return false;
+  }) || tipoDoc.secciones[1]; // Fallback a la segunda sección por seguridad
+
+  // Autoseleccionar el primer anexo asignado a la sección
+  if (!activeAnexoId && activeSeccion && activeSeccion.anexos.length > 0) {
+    setActiveAnexoId(activeSeccion.anexos[0].anexoTemplateId);
+  }
+
+  // Cargar borrador/respuestas del anexo activo en memoria al cambiar de pestaña
   useEffect(() => {
-    if (investigacion.estado === 'estratificacion') {
-      setActiveTab('estratificacion');
-    } else if (investigacion.estado === 'revision-tecnica') {
-      setActiveTab('revision-tecnica');
+    if (activeAnexoId && latestVersion) {
+      const respGuardada = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
+      );
+
+      const iniciales: Record<string, any> = {};
+      if (respGuardada) {
+        respGuardada.valores.forEach(v => {
+          iniciales[v.campoId] = v.valor;
+        });
+      } else {
+        const template = anexosTemplates.find(t => t.id === activeAnexoId);
+        template?.preguntas.forEach(p => {
+          iniciales[p.id] = p.tipo === 'cumple-nocumple' || p.tipo === 'si-no' || p.tipo === 'checklist' ? false : '';
+        });
+      }
+      setRespuestasForm(iniciales);
     }
-  }, [investigacion.estado]);
+  }, [activeAnexoId, latestVersion?.id]);
 
-  const handleCheckboxA27 = (campoId: string) => {
-    setA27Respuestas((prev) => ({ ...prev, [campoId]: !prev[campoId] }));
+  // Cargar observaciones o respuestas a nivel de página del PDF para este anexo si ya fueron guardadas
+  useEffect(() => {
+    if (activeAnexoId && latestVersion) {
+      const respGuardada = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
+      );
+      if (respGuardada) {
+        setAnotaciones(respGuardada.comentariosAnotados.map(c => ({ ...c })));
+      }
+    }
+  }, [activeAnexoId, latestVersion?.id]);
+
+  // Manejar cambio de input en preguntas
+  const handlePreguntaChange = (preguntaId: string, valor: any) => {
+    setRespuestasForm(prev => ({ ...prev, [preguntaId]: valor }));
   };
 
-  const handleCheckboxA12 = (campoId: string) => {
-    setA12Respuestas((prev) => ({ ...prev, [campoId]: !prev[campoId] }));
+  // Manejar adición de anotación por página del PDF (Fase 3)
+  const handleAgregarAnotacion = () => {
+    if (!nuevoComentarioTexto.trim()) return;
+
+    const nuevaAnotacion: ComentarioAnotacion = {
+      id: typeof window !== 'undefined' && window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36),
+      texto: nuevoComentarioTexto.trim(),
+      paginaPdf: pdf.currentPage,
+      autorId: currentUser.id,
+      autorNombre: currentUser.name,
+      createdAt: new Date().toISOString()
+    };
+
+    setAnotaciones(prev => [...prev, nuevaAnotacion].sort((a, b) => (a.paginaPdf || 0) - (b.paginaPdf || 0)));
+    setNuevoComentarioTexto('');
   };
 
-  // ACCIÓN 1: Confirmar Sin Riesgo (Anexo 27 coincidente + Emisión Anexo 11)
-  const handleConfirmarSinRiesgo = () => {
-    if (!a27_justificacion.trim()) {
-      window.alert('Debe rellenar la justificación/criterio final del anexo de estratificación.');
-      return;
+  const handleEliminarAnotacion = (id: string) => {
+    setAnotaciones(prev => prev.filter(a => a.id !== id));
+  };
+
+  // Guardar Borrador
+  const handleGuardarBorrador = () => {
+    if (!activeAnexoId || !latestVersion) return;
+
+    const valores: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
+      campoId: key,
+      valor: respuestasForm[key]
+    }));
+
+    guardarRespuestaAnexo({
+      anexoTemplateId: activeAnexoId,
+      documentoId: documento.id,
+      seccionId: activeSeccion.id,
+      versionArchivoId: latestVersion.id,
+      emitidoPorId: currentUser.id,
+      emitidoPorNombre: currentUser.name,
+      valores,
+      comentariosAnotados: anotaciones
+    });
+
+    window.alert('Respuestas y anotaciones de página guardadas en borrador.');
+  };
+
+  // ============================================================================
+  // DISPARADORES DE ACCIÓN (Mapeados por Anexo ID en Estratificación)
+  // ============================================================================
+
+  // ACCIÓN 1: Confirmar Sin Riesgo (Emite Anexo 27 y Carta Exención Anexo 11)
+  const handleConfirmarExencion = () => {
+    const justificacionText = respuestasForm[Object.keys(respuestasForm).slice(-1)[0]] || '';
+    if (!justificacionText.trim()) {
+      return alert('Debe completar la justificación/criterio final del anexo de estratificación.');
     }
 
     const versionId = latestVersion?.id || '';
+    const valoresA27: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
+      campoId: key,
+      valor: respuestasForm[key]
+    }));
 
-    // 1. Emitir Anexo 27 (Estratificación)
-    const emisionA27 = {
-      anexoId: 'anexo-27',
-      investigacionId: investigacion.id,
-      etapa: 'estratificacion' as const,
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: [
-        { campoId: 'a27_c1', valor: a27_respuestas.a27_c1 },
-        { campoId: 'a27_c2', valor: a27_respuestas.a27_c2 },
-        { campoId: 'a27_c3', valor: a27_respuestas.a27_c3 },
-        { campoId: 'a27_c4', valor: a27_respuestas.a27_c4 },
-        { campoId: 'a27_c5', valor: a27_justificacion }
-      ],
-      comentariosAnotados: []
-    };
-    emitirAnexo(emisionA27, 'coincide', 'revision-tecnica', 'Estratificación completada: Coincide sin riesgo.');
-
-    // 2. Emitir Anexo 11 (Exención Ética)
-    const emisionA11 = {
-      anexoId: 'anexo-11',
-      investigacionId: investigacion.id,
-      etapa: 'estratificacion' as const,
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: [
-        { campoId: 'a11_c1', valor: `Exención ética autorizada tras análisis de estratificación. Criterio: ${a27_justificacion}` },
-        { campoId: 'a11_c2', valor: true }
-      ],
-      comentariosAnotados: []
-    };
+    // 1. Emitir Anexo 27
     emitirAnexo(
-      emisionA11,
-      'aprobado',
+      {
+        anexoTemplateId: 'anexo-27',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: valoresA27,
+        comentariosAnotados: []
+      },
+      'coincide',
       'revision-tecnica',
-      'Emisión oficial de Carta de Exención (Anexo 11). Proyecto movido a Revisión Técnica.',
+      'Estratificación de riesgo completada: Confirmado sin riesgo.',
       'sin-riesgo'
     );
 
-    window.alert('Se ha confirmado la exención de revisión ética (Anexo 11). El trámite pasa a Revisión Técnica (Etapa 2).');
+    // 2. Emitir Anexo 11 (Exención Ética)
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-11',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: [
+          { campoId: 'a11_c1', valor: `Exención ética autorizada tras análisis de estratificación. Criterio: ${justificacionText}` },
+          { campoId: 'a11_c2', valor: true }
+        ],
+        comentariosAnotados: []
+      },
+      'aprobado',
+      'revision-tecnica',
+      'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 2).',
+      'sin-riesgo'
+    );
+
+    window.alert('Se ha confirmado la exención de revisión ética (Anexo 11). Trámite pasa a Revisión Técnica.');
     navigate('/evaluador');
   };
 
-  // ACCIÓN 2: Ajustar Clasificación (Desviación del riesgo)
-  const handleAjustarRiesgo = () => {
-    if (!a27_justificacion.trim()) {
-      window.alert('Debe detallar la justificación técnica de la reclasificación.');
-      return;
+  // ACCIÓN 2: Elevar Riesgo (Fuera de Alcance del Prototipo)
+  const handleElevarRiesgo = () => {
+    const justificacionText = respuestasForm[Object.keys(respuestasForm).slice(-1)[0]] || '';
+    if (!justificacionText.trim()) {
+      return alert('Debe detallar la justificación técnica de la reclasificación.');
     }
 
     const versionId = latestVersion?.id || '';
+    const valoresA27: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
+      campoId: key,
+      valor: respuestasForm[key]
+    }));
 
-    // Emitir Anexo 27 (Desvia)
-    const emisionA27 = {
-      anexoId: 'anexo-27',
-      investigacionId: investigacion.id,
-      etapa: 'estratificacion' as const,
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: [
-        { campoId: 'a27_c1', valor: a27_respuestas.a27_c1 },
-        { campoId: 'a27_c2', valor: a27_respuestas.a27_c2 },
-        { campoId: 'a27_c3', valor: a27_respuestas.a27_c3 },
-        { campoId: 'a27_c4', valor: a27_respuestas.a27_c4 },
-        { campoId: 'a27_c5', valor: `RECLASIFICADO A ${nuevoRiesgoEleccion.toUpperCase()}. Motivo: ${a27_justificacion}` }
-      ],
-      comentariosAnotados: []
-    };
-
-    // Pasamos a revision-tecnica pero asignando el nuevoRiesgoEleccion
+    // Emitir Anexo 27 con Discrepa
     emitirAnexo(
-      emisionA27,
+      {
+        anexoTemplateId: 'anexo-27',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: valoresA27,
+        comentariosAnotados: []
+      },
       'discrepa',
       'revision-tecnica',
-      `Estratificación: El revisor elevó la clasificación a ${nuevoRiesgoEleccion.replace('-', ' ')}. Justificación: ${a27_justificacion}`,
+      `Estratificación modificada a: ${nuevoRiesgoEleccion.replace('-', ' ')}. Justificación: ${justificacionText}`,
       nuevoRiesgoEleccion
     );
 
-    window.alert(`El proyecto ha sido reclasificado a: ${nuevoRiesgoEleccion.replace('-', ' ')} y movido a Revisión Técnica (Fuera de alcance del prototipo).`);
+    window.alert(`El riesgo del proyecto ha sido reclasificado a ${nuevoRiesgoEleccion.replace('-', ' ')}. El trámite queda congelado fuera de alcance.`);
     navigate('/evaluador');
   };
 
-  // ACCIÓN 3: Devolver para correcciones (Sección 3.8)
-  const handleDevolverProyecto = () => {
+  // ACCIÓN 3: Inhibición por Conflicto (Anexo 23)
+  const handleDeclararConflicto = () => {
+    if (!conflictoComentario.trim()) {
+      return alert('Describa detalladamente la causa de su conflicto de interés.');
+    }
+
+    darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, conflictoComentario.trim());
+    window.alert('Se ha registrado su conflicto de interés (Anexo 23). La plataforma lo ha retirado de este proyecto y asignado otro revisor.');
+    navigate('/evaluador');
+  };
+
+  // ACCIÓN 4: Devolver para Observaciones (Etapa 2)
+  const handleDevolverInvestigador = () => {
     if (!devolucionComentario.trim()) {
-      window.alert('Debe rellenar los comentarios de corrección para el investigador.');
-      return;
+      return alert('Debe ingresar un comentario indicando las observaciones.');
     }
 
     const versionId = latestVersion?.id || '';
 
-    // Emitimos el anexo actual en borrador/rechazo parcial para guardar las anotaciones
-    const emisionA27 = {
-      anexoId: investigacion.estado === 'estratificacion' ? 'anexo-27' : 'anexo-12',
-      investigacionId: investigacion.id,
-      etapa: investigacion.estado === 'estratificacion' ? ('estratificacion' as const) : ('revision-tecnica' as const),
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: investigacion.estado === 'estratificacion' ? [
-        { campoId: 'a27_c1', valor: a27_respuestas.a27_c1 },
-        { campoId: 'a27_c2', valor: a27_respuestas.a27_c2 },
-        { campoId: 'a27_c3', valor: a27_respuestas.a27_c3 },
-        { campoId: 'a27_c4', valor: a27_respuestas.a27_c4 },
-        { campoId: 'a27_c5', valor: `Devuelto para corrección: ${devolucionComentario}` }
-      ] : [
-        { campoId: 'a12_c1', valor: a12_respuestas.a12_c1 },
-        { campoId: 'a12_c2', valor: a12_respuestas.a12_c2 },
-        { campoId: 'a12_c3', valor: a12_respuestas.a12_c3 },
-        { campoId: 'a12_c4', valor: a12_respuestas.a12_c4 },
-        { campoId: 'a12_c5', valor: a12_respuestas.a12_c5 },
-        { campoId: 'a12_obs', valor: `Devuelto para corrección: ${devolucionComentario}` }
-      ],
-      comentariosAnotados: []
-    };
-
-    // Emitimos y transicionamos de vuelta a 'creada' (borrador para el investigador)
+    // Emitir Anexo 27 con observaciones
     emitirAnexo(
-      emisionA27,
+      {
+        anexoTemplateId: activeAnexoId || 'anexo-27',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: Object.keys(respuestasForm).map(key => ({ campoId: key, valor: respuestasForm[key] })),
+        comentariosAnotados: []
+      },
       'con-observaciones',
       'creada',
-      `Observaciones de revisión: El proyecto fue devuelto para correcciones. Detalles: ${devolucionComentario}`
+      `Proyecto devuelto al Investigador para correcciones. Motivo: ${devolucionComentario}`
     );
 
-    window.alert('El proyecto ha sido devuelto al investigador. Se le notificará el listado de observaciones.');
+    window.alert('Proyecto devuelto al investigador en estado Borrador.');
     navigate('/evaluador');
   };
 
-  // ACCIÓN 4: Inhibirse / Conflictos de Interés (Anexo 23)
-  const handleInhibirse = () => {
-    if (!conflictoComentario.trim()) {
-      window.alert('Debe justificar la causa de su conflicto de interés.');
-      return;
+  // ACCIÓN 5: Escalar al Administrador
+  const handleEscalarAdmin = () => {
+    if (!escalamientoComentario.trim()) {
+      return alert('Escriba la causa del escalamiento.');
     }
 
-    darseDeBajaRevisor(investigacion.id, currentUser.id, currentUser.name, conflictoComentario);
-    window.alert(
-      'Ha declarado conflicto de interés (Anexo 23). Se ha cancelado su asignación y la plataforma reasignará el proyecto a otro revisor.'
-    );
-    navigate('/evaluador');
-  };
+    // Guardar borrador del anexo primero
+    handleGuardarBorrador();
 
-  // ACCIÓN 5: Emitir Resolución Aprobación (Anexo 13 - Finalización)
-  const handleFinalizarAprobacion = () => {
-    if (!a12_observaciones.trim()) {
-      window.alert('Debe rellenar las observaciones finales para la aprobación.');
-      return;
-    }
-
+    // Encontrar borrador guardado para ligarlo
     const versionId = latestVersion?.id || '';
+    const resp = respuestasAnexos.find(
+      r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === versionId
+    );
 
-    // 1. Emitir Anexo 12 (Evaluación)
-    const emisionA12 = {
-      anexoId: 'anexo-12',
-      investigacionId: investigacion.id,
-      etapa: 'revision-tecnica' as const,
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: [
-        { campoId: 'a12_c1', valor: a12_respuestas.a12_c1 },
-        { campoId: 'a12_c2', valor: a12_respuestas.a12_c2 },
-        { campoId: 'a12_c3', valor: a12_respuestas.a12_c3 },
-        { campoId: 'a12_c4', valor: a12_respuestas.a12_c4 },
-        { campoId: 'a12_c5', valor: a12_respuestas.a12_c5 },
-        { campoId: 'a12_obs', valor: a12_observaciones }
-      ],
-      comentariosAnotados: []
-    };
-    emitirAnexo(emisionA12, 'coincide', 'revision-tecnica', 'Revisión técnica aprobada en formato check-list.');
+    crearEscalamiento(
+      documento.id,
+      activeSeccion.id,
+      activeAnexoId || '',
+      escalamientoComentario.trim(),
+      resp?.id || ''
+    );
+
+    window.alert('Escalamiento registrado. El administrador revisará y editará el anexo. El proceso sigue corriendo en paralelo.');
+    setShowEscalarModal(false);
+    setEscalamientoComentario('');
+  };
+
+  // ============================================================================
+  // DISPARADORES DE ACCIÓN (Mapeados por Anexo ID en Evaluación Técnica)
+  // ============================================================================
+
+  // ACCIÓN A: Aprobar Proyecto (Emisión de Anexo 12 y Anexo 13)
+  const handleAprobarProyecto = () => {
+    const versionId = latestVersion?.id || '';
+    const valoresA12 = Object.keys(respuestasForm).map(key => ({
+      campoId: key,
+      valor: respuestasForm[key]
+    }));
+
+    // 1. Emitir Anexo 12
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-12',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: valoresA12,
+        comentariosAnotados: []
+      },
+      'aprobado',
+      'aprobada',
+      'Evaluación técnica aprobada.'
+    );
 
     // 2. Emitir Anexo 13 (Resolución de Aprobación Final)
-    const emisionA13 = {
-      anexoId: 'anexo-13',
-      investigacionId: investigacion.id,
-      etapa: 'revision-tecnica' as const,
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: [
-        { campoId: 'a13_c1', valor: true },
-        { campoId: 'a13_c2', valor: `Proyecto aprobado ética y metodológicamente. Condiciones: ${a12_observaciones}` }
-      ],
-      comentariosAnotados: []
-    };
-    emitirAnexo(emisionA13, 'aprobado', 'aprobada', 'Emisión oficial de Resolución de Aprobación Ética (Anexo 13).');
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-13',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: [
+          { campoId: 'a13_c1', valor: true },
+          { campoId: 'a13_c2', valor: 'Aprobación definitiva ética y metodológica emitida sin observaciones.' }
+        ],
+        comentariosAnotados: []
+      },
+      'aprobado',
+      'aprobada',
+      'Emisión oficial de la Resolución de Aprobación del CEISH.'
+    );
 
-    window.alert('Se ha emitido la Resolución de Aprobación (Anexo 13). El trámite ha sido Aprobado de forma definitiva.');
+    window.alert('Proyecto aprobado ética y metodológicamente (Anexo 13). Trámite finalizado con éxito.');
     navigate('/evaluador');
   };
 
-  // ACCIÓN 6: Anular / Rechazar Proyecto (Anexo 26)
-  const handleAnularProyecto = () => {
-    if (!a12_observaciones.trim()) {
-      window.alert('Debe justificar técnicamente los motivos de la anulación del proyecto.');
-      return;
-    }
+  // ACCIÓN B: No Aprobar (Devolver con observaciones, mantiene revisión técnica)
+  const handleNoAprobarDevolver = () => {
+    if (anotaciones.length === 0) return;
+
+    const versionId = latestVersion?.id || '';
+    const valoresA12 = Object.keys(respuestasForm).map(key => ({
+      campoId: key,
+      valor: respuestasForm[key]
+    }));
+
+    // Emitir Anexo 12 con observaciones, mantiene estado 'revision-tecnica'
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-12',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: valoresA12,
+        comentariosAnotados: anotaciones // Guardamos la colección de observaciones detallando página
+      },
+      'con-observaciones',
+      'revision-tecnica', // Mantiene el estado en revisión técnica
+      'No aprobado en esta ronda. Proyecto devuelto al investigador con observaciones metodológicas.'
+    );
+
+    window.alert('Proyecto devuelto con observaciones técnicas. Se mantiene en revisión técnica y el investigador ya puede cargar su corrección.');
+    navigate('/evaluador');
+  };
+
+  // ACCIÓN C: Dar de Baja Proyecto (Anexo 26)
+  const handleDarDeBaja = () => {
+    const motivo = prompt('Por favor, ingrese la causa técnica de la baja definitiva / revocatoria del protocolo:');
+    if (!motivo) return;
 
     const versionId = latestVersion?.id || '';
 
-    // Emitir Anexo 26
-    const emisionA26 = {
-      anexoId: 'anexo-26',
-      investigacionId: investigacion.id,
-      etapa: 'revision-tecnica' as const,
-      versionArchivoId: versionId,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores: [
-        { campoId: 'a26_c1', valor: a12_observaciones },
-        { campoId: 'a26_c2', valor: true }
-      ],
-      comentariosAnotados: []
-    };
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-26',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: [
+          { campoId: 'a26_c1', valor: motivo },
+          { campoId: 'a26_c2', valor: true }
+        ],
+        comentariosAnotados: []
+      },
+      'baja',
+      'anulada',
+      `Proyecto dado de baja definitiva del CEISH. Causa: ${motivo}`
+    );
 
-    emitirAnexo(emisionA26, 'baja', 'anulada', `El proyecto ha sido anulado / rechazado. Motivo: ${a12_observaciones}`);
-    window.alert('Se ha emitido la resolución de anulación (Anexo 26). El proyecto ha sido Anulado.');
+    window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
     navigate('/evaluador');
   };
 
+  // Obtener emisiones previas de evaluación metodológica (Anexo 12) para contrastar
+  const getHistorialRondasA12 = () => {
+    return respuestasAnexos.filter(
+      r => r.documentoId === documento.id && r.anexoTemplateId === 'anexo-12' && r.resultado === 'con-observaciones'
+    );
+  };
+  const rondasPreviasA12 = getHistorialRondasA12();
+
   return (
-    <div className="eval-layout" style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100vh', overflow: 'hidden' }}>
-      
-      {/* Encabezado del Evaluador */}
-      <header className="eval-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', borderBottom: '1px solid #e2e8f0', background: 'white' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button 
-            onClick={() => navigate('/evaluador')} 
-            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '8px', borderRadius: '50%' }}
-            title="Volver al Dashboard"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-          </button>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
-              Evaluación Ciega: {investigacion.codigo}
-            </h1>
-            <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
-              Revisor: {currentUser.name} (Confidencial)
-            </p>
-          </div>
+    <div className="eval-page">
+      {/* 1. Visor de PDF (Panel Izquierdo) */}
+      <div className="eval-left-panel">
+        <div className="eval-left-header">
+          <span>Expediente: <strong>{documento.codigo}</strong></span>
+          <span>Pág. {pdf.currentPage} de {pdf.totalPages || '?'}</span>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
-          {investigacion.estado === 'estratificacion' && (
-            <button 
-              className="eval-btn eval-btn--outline" 
-              style={{ color: '#ef4444', borderColor: '#fca5a5' }}
-              onClick={() => setShowConflictoModal(true)}
-            >
-              Declarar Conflicto de Interés
-            </button>
-          )}
-          <button 
-            className="eval-btn eval-btn--outline" 
-            style={{ color: '#e29400', borderColor: '#fcd34d' }}
-            onClick={() => setShowDevolverModal(true)}
-          >
-            Devolver para Correcciones
-          </button>
-        </div>
-      </header>
-
-      {/* Cuerpo Principal del Visor Split Screen */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 480px', overflow: 'hidden' }}>
-        
-        {/* Panel Izquierdo: Visor de PDF */}
-        <div style={{ background: '#f1f5f9', overflow: 'auto', display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="eval-pdf-container">
           {fileObj ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <PDFViewer
-                file={fileObj}
-                currentPage={pdf.currentPage}
-                totalPages={pdf.totalPages}
-                zoom={pdf.zoom}
-                isLoading={pdf.isLoading}
-                onLoadSuccess={pdf.setTotalPages}
-                onLoadFile={pdf.loadFile}
-                onPrevPage={pdf.prevPage}
-                onNextPage={pdf.nextPage}
-                onZoomIn={pdf.zoomIn}
-                onZoomOut={pdf.zoomOut}
-                onResetZoom={pdf.resetZoom}
-                onPageChange={pdf.goToPage}
-              />
+            <PDFViewer
+              file={fileObj}
+              currentPage={pdf.currentPage}
+              totalPages={pdf.totalPages}
+              zoom={pdf.zoom}
+              isLoading={pdf.isLoading}
+              onLoadSuccess={pdf.setTotalPages}
+              onLoadFile={pdf.loadFile}
+              onPrevPage={pdf.prevPage}
+              onNextPage={pdf.nextPage}
+              onZoomIn={pdf.zoomIn}
+              onZoomOut={pdf.zoomOut}
+              onResetZoom={pdf.resetZoom}
+              onPageChange={pdf.goToPage}
+            />
+          ) : (
+            <div className="pdf-placeholder-alert">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <h4>Documento no disponible tras recarga</h4>
+              <p>En este prototipo, el archivo PDF subido en memoria se limpia del caché al refrescar el navegador.</p>
+              <p className="highlight">Por favor, vaya al dashboard del Investigador y vuelva a subir el archivo para esta prueba.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Panel de Evaluación (Panel Derecho) */}
+      <div className="eval-right-panel">
+        <div className="eval-tabs">
+          <button 
+            className={`eval-tabs__btn ${activeTab === 'evaluacion-dinamica' ? 'active' : ''}`}
+            onClick={() => setActiveTab('evaluacion-dinamica')}
+          >
+            Formulario ({activeSeccion.nombre})
+          </button>
+          <button 
+            className={`eval-tabs__btn ${activeTab === 'info' ? 'active' : ''}`}
+            onClick={() => setActiveTab('info')}
+          >
+            Ficha Técnica
+          </button>
+        </div>
+
+        <div className="eval-right-body">
+          {activeTab === 'info' ? (
+            <div className="eval-info-view" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '13px', color: '#64748b', textTransform: 'uppercase' }}>Tema / Proyecto</h4>
+                <p style={{ margin: '4px 0 0 0', fontSize: '14px', fontWeight: 600, color: '#1e293b' }}>{documento.tema}</p>
+              </div>
+
+              <div>
+                <h4 style={{ margin: 0, fontSize: '13px', color: '#64748b', textTransform: 'uppercase' }}>Resumen</h4>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#475569', lineHeight: '1.4' }}>{documento.descripcion}</p>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: 0, fontSize: '12px', color: '#0369a1', fontWeight: 700 }}>Modo de Revisión Ciega</h4>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#0e7490', lineHeight: '1.4' }}>
+                  Las identidades de los autores y co-autores del protocolo están enmascaradas para garantizar imparcialidad científica y metodológica.
+                </p>
+              </div>
             </div>
           ) : (
-            <div style={{ margin: 'auto', textAlign: 'center', padding: '30px', maxWidth: '450px', background: 'white', borderRadius: '10px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', border: '1px solid #e2e8f0' }}>
-              <div style={{ margin: '0 auto 16px auto', width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', borderRadius: '50%', color: '#ef4444' }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="9" y1="15" x2="15" y2="15"></line>
-                </svg>
-              </div>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px 0', color: '#0f172a' }}>Documento PDF no disponible</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5', margin: '0 0 16px 0' }}>
-                El archivo del protocolo se encuentra en memoria de sesión y no sobrevivió a la recarga de página.
-              </p>
-              <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '6px', fontSize: '11px', color: '#475569', textAlign: 'left', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
-                <strong>Para visualizarlo en esta prueba:</strong> Regrese al rol de Investigador (Juan Pérez), edite o registre el proyecto subiendo el archivo de nuevo.
-              </div>
-              <button className="eval-btn eval-btn--outline" style={{ width: '100%' }} onClick={() => navigate('/evaluador')}>
-                Regresar a Mis Revisiones
-              </button>
-            </div>
-          )}
-        </div>
+            <div className="eval-dynamic-flow" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Selector de Anexo según Configuración */}
+              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #cbd5e1', paddingBottom: '8px' }}>
+                {activeSeccion.anexos.map(an => {
+                  const temp = anexosTemplates.find(t => t.id === an.anexoTemplateId);
+                  if (!temp) return null;
 
-        {/* Panel Derecho: Control de Evaluación */}
-        <div style={{ background: 'white', borderLeft: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-          
-          {/* Navegación por Pestañas */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-            <button 
-              onClick={() => setActiveTab('info')}
-              style={{ flex: 1, padding: '12px 6px', border: 'none', background: activeTab === 'info' ? 'white' : 'transparent', borderBottom: activeTab === 'info' ? '2px solid #2563eb' : 'none', fontWeight: activeTab === 'info' ? 600 : 400, color: activeTab === 'info' ? '#2563eb' : '#64748b', cursor: 'pointer', fontSize: '13px' }}
-            >
-              Info Proyecto
-            </button>
-            
-            {investigacion.estado === 'estratificacion' && (
-              <button 
-                onClick={() => setActiveTab('estratificacion')}
-                style={{ flex: 1, padding: '12px 6px', border: 'none', background: activeTab === 'estratificacion' ? 'white' : 'transparent', borderBottom: activeTab === 'estratificacion' ? '2px solid #2563eb' : 'none', fontWeight: activeTab === 'estratificacion' ? 600 : 400, color: activeTab === 'estratificacion' ? '#2563eb' : '#64748b', cursor: 'pointer', fontSize: '13px' }}
-              >
-                Estratificación (A27)
-              </button>
-            )}
-
-            {investigacion.estado === 'revision-tecnica' && (
-              <button 
-                onClick={() => setActiveTab('revision-tecnica')}
-                style={{ flex: 1, padding: '12px 6px', border: 'none', background: activeTab === 'revision-tecnica' ? 'white' : 'transparent', borderBottom: activeTab === 'revision-tecnica' ? '2px solid #2563eb' : 'none', fontWeight: activeTab === 'revision-tecnica' ? 600 : 400, color: activeTab === 'revision-tecnica' ? '#2563eb' : '#64748b', cursor: 'pointer', fontSize: '13px' }}
-              >
-                Revisión Técnica (A12)
-              </button>
-            )}
-          </div>
-
-          {/* Contenido de la Pestaña Activa */}
-          <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            
-            {/* Pestaña: Info Proyecto */}
-            {activeTab === 'info' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#475569', fontWeight: 600 }}>TEMA / TÍTULO DE INVESTIGACIÓN</p>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#0f172a', fontWeight: 500 }}>{investigacion.tema}</p>
-                </div>
-
-                <div>
-                  <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: 600 }}>RESUMEN DEL PROYECTO</p>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#334155', lineHeight: '1.5' }}>{investigacion.descripcion}</p>
-                </div>
-
-                <div>
-                  <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: 600 }}>AUTORES Y CO-INVESTIGADORES</p>
-                  <div style={{ background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', color: '#475569', fontSize: '12px', fontStyle: 'italic', marginTop: '4px' }}>
-                    🔒 Ocultado por Garantía de Revisión Ciega (Sección 3.2).
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: 600 }}>RIESGO DECLARADO</p>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', fontWeight: 600, color: '#1e293b', textTransform: 'capitalize' }}>
-                      {investigacion.riesgoDeclarado.replace('-', ' ')}
-                    </p>
-                  </div>
-                  <div>
-                    <p style={{ margin: 0, fontSize: '11px', color: '#64748b', fontWeight: 600 }}>ESTADO ACTUAL</p>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', fontWeight: 600, color: '#2563eb' }}>
-                      {investigacion.estado === 'estratificacion' ? 'Estratificación (Etapa 1)' : 'Revisión Técnica (Etapa 2)'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Pestaña: Estratificación (Anexo 27) */}
-            {activeTab === 'estratificacion' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ background: '#fdf2f8', border: '1px solid #fbcfe8', padding: '12px', borderRadius: '6px', color: '#9d174d', fontSize: '12px' }}>
-                  <strong>Instrucción del Anexo 27:</strong> Marque los criterios de riesgo detectados. Si todos son falsos/negativos, confirme el proyecto como <strong>Sin Riesgo</strong>.
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      style={{ marginTop: '3px' }} 
-                      checked={a27_respuestas.a27_c1} 
-                      onChange={() => handleCheckboxA27('a27_c1')}
-                    />
-                    <span>¿El estudio causa algún daño físico, psicológico o moral directo en el sujeto evaluado?</span>
-                  </label>
-                  
-                  <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      style={{ marginTop: '3px' }} 
-                      checked={a27_respuestas.a27_c2} 
-                      onChange={() => handleCheckboxA27('a27_c2')}
-                    />
-                    <span>¿Involucra captura o almacenamiento de datos personales sensibles o información privada?</span>
-                  </label>
-
-                  <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      style={{ marginTop: '3px' }} 
-                      checked={a27_respuestas.a27_c3} 
-                      onChange={() => handleCheckboxA27('a27_c3')}
-                    />
-                    <span>¿Se recolectan y analizan muestras biológicas humanas (tejido, sangre, ADN)?</span>
-                  </label>
-
-                  <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      style={{ marginTop: '3px' }} 
-                      checked={a27_respuestas.a27_c4} 
-                      onChange={() => handleCheckboxA27('a27_c4')}
-                    />
-                    <span>¿El universo de estudio abarca poblaciones vulnerables (niños, embarazadas, reclusos)?</span>
-                  </label>
-                </div>
-
-                <div className="modal__field">
-                  <label className="modal__label">Justificación Técnica / Criterio del Revisor *</label>
-                  <textarea 
-                    className="modal__textarea"
-                    required
-                    rows={4}
-                    placeholder="Escriba aquí los argumentos que respaldan su decisión sobre el nivel de riesgo..."
-                    value={a27_justificacion}
-                    onChange={(e) => setA27Justificacion(e.target.value)}
-                  />
-                </div>
-
-                {/* Acciones de la Estratificación */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '16px', marginTop: '10px' }}>
-                  
-                  {/* Opción A: Confirmar como Sin Riesgo */}
-                  <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
-                    <p style={{ margin: '0 0 6px 0', fontSize: '11px', color: '#166534', fontWeight: 600 }}>RAMA: SIN RIESGO</p>
-                    <button 
-                      className="eval-btn eval-btn--primary" 
-                      style={{ width: '100%', padding: '8px 12px' }}
-                      onClick={handleConfirmarSinRiesgo}
-                      disabled={Object.values(a27_respuestas).some(val => val === true)}
+                  return (
+                    <button
+                      key={temp.id}
+                      className={`eval-tabs__btn ${activeAnexoId === temp.id ? 'active' : ''}`}
+                      onClick={() => setActiveAnexoId(temp.id)}
+                      style={{ fontSize: '12px', padding: '4px 10px' }}
                     >
-                      Confirmar Exención Ética (Anexo 11)
+                      Anexo {temp.numero} {an.obligatorio ? '*' : ''}
                     </button>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#15803d', textAlign: 'center' }}>
-                      (Solo disponible si todos los criterios de riesgo son negativos)
-                    </p>
-                  </div>
-
-                  {/* Opción B: Desviación (Riesgo Mínimo o Mayor) */}
-                  <div style={{ background: '#fffbeb', padding: '12px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                    <p style={{ margin: '0 0 6px 0', fontSize: '11px', color: '#92400e', fontWeight: 600 }}>RAMA: RECLASIFICAR RIESGO (DESVIACIÓN)</p>
-                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                      <select 
-                        value={nuevoRiesgoEleccion} 
-                        onChange={(e) => setNuevoRiesgoEleccion(e.target.value as RiesgoTipo)}
-                        style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                      >
-                        <option value="riesgo-minimo">Riesgo Mínimo</option>
-                        <option value="riesgo-mayor">Riesgo Mayor</option>
-                      </select>
-                      <button 
-                        className="eval-btn eval-btn--outline" 
-                        style={{ padding: '6px 12px', background: 'white' }}
-                        onClick={handleAjustarRiesgo}
-                      >
-                        Reclasificar
-                      </button>
-                    </div>
-                    <p style={{ margin: 0, fontSize: '10px', color: '#b45309' }}>
-                      Nota: Elevar el riesgo moverá el trámite a la Etapa 2 de forma declarativa (Fuera del alcance interactivo).
-                    </p>
-                  </div>
-
-                </div>
+                  );
+                })}
               </div>
-            )}
 
-            {/* Pestaña: Revisión Técnica (Anexo 12) */}
-            {activeTab === 'revision-tecnica' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
-                {/* Si fue reclasificado a riesgo mínimo/mayor */}
-                {(investigacion.riesgoConfirmado === 'riesgo-minimo' || investigacion.riesgoConfirmado === 'riesgo-mayor') ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', padding: '16px', borderRadius: '8px', color: '#991b1b', textAlign: 'center' }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 10px auto' }}>
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="8" x2="12" y2="12" />
-                      <line x1="12" y1="16" x2="12.01" y2="16" />
-                    </svg>
-                    <h3 style={{ fontSize: '14px', margin: '0 0 6px 0', fontWeight: 700 }}>Riesgo Mínimo/Mayor Confirmado</h3>
-                    <p style={{ fontSize: '12px', margin: 0, lineHeight: '1.4' }}>
-                      Este proyecto fue reclasificado con riesgo ético durante la estratificación. El flujo de evaluación por pares múltiples (2 evaluadores, consolidación por Anexo 12) se encuentra fuera del alcance del presente prototipo.
-                    </p>
-                    <button 
-                      className="eval-btn eval-btn--outline" 
-                      style={{ marginTop: '12px', width: '100%', borderColor: '#fca5a5', background: 'white', color: '#b91c1c' }}
-                      onClick={() => navigate('/evaluador')}
-                    >
-                      Volver a Mis Revisiones
-                    </button>
-                  </div>
-                ) : (
-                  // Rama Sin Riesgo (Fase Técnica)
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '12px', borderRadius: '6px', color: '#166534', fontSize: '12px' }}>
-                      <strong>Etapa 2: Revisión Técnica Metodológica (Anexo 12).</strong> Verifique el cumplimiento de los componentes básicos del protocolo para emitir la resolución.
+              {/* Formulario de Preguntas Dinámicas */}
+              {activeAnexoId && (() => {
+                const template = anexosTemplates.find(t => t.id === activeAnexoId);
+                if (!template) return null;
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                        Anexo {template.numero}: {template.nombre}
+                      </h4>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <label style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={a12_respuestas.a12_c1} 
-                          onChange={() => handleCheckboxA12('a12_c1')}
-                        />
-                        <span>Título descriptivo, claro y delimitado temporal/espacialmente.</span>
-                      </label>
-                      
-                      <label style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={a12_respuestas.a12_c2} 
-                          onChange={() => handleCheckboxA12('a12_c2')}
-                        />
-                        <span>Justificación teórica y empírica del problema planteado.</span>
-                      </label>
+                      {template.preguntas.map((p) => (
+                        <div key={p.id} className="form-group" style={{ background: 'white', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                          {p.descripcionContexto && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                              [{p.descripcionContexto}]
+                            </span>
+                          )}
+                          <label className="form-label" style={{ fontSize: '12.5px', lineHeight: '1.4' }}>{p.texto}</label>
 
-                      <label style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={a12_respuestas.a12_c3} 
-                          onChange={() => handleCheckboxA12('a12_c3')}
-                        />
-                        <span>Objetivos coherentes, viables y medibles metodológicamente.</span>
-                      </label>
-
-                      <label style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={a12_respuestas.a12_c4} 
-                          onChange={() => handleCheckboxA12('a12_c4')}
-                        />
-                        <span>Diseño metodológico, instrumentos y técnicas descritas al detalle.</span>
-                      </label>
-
-                      <label style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={a12_respuestas.a12_c5} 
-                          onChange={() => handleCheckboxA12('a12_c5')}
-                        />
-                        <span>Fundamentación adecuada de las consideraciones éticas aplicables.</span>
-                      </label>
+                          {p.tipo === 'texto-libre' ? (
+                            <textarea
+                              className="form-input"
+                              rows={3}
+                              value={respuestasForm[p.id] || ''}
+                              onChange={(e) => handlePreguntaChange(p.id, e.target.value)}
+                              placeholder="Escriba su criterio u observaciones..."
+                              style={{ fontSize: '12px', marginTop: '6px' }}
+                            />
+                          ) : p.tipo === 'si-no' || p.tipo === 'cumple-nocumple' ? (
+                            <div style={{ display: 'flex', gap: '16px', marginTop: '6px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px' }}>
+                                <input
+                                  type="radio"
+                                  name={`preg-${p.id}`}
+                                  checked={respuestasForm[p.id] === true}
+                                  onChange={() => handlePreguntaChange(p.id, true)}
+                                />
+                                <span>Sí / Cumple</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px' }}>
+                                <input
+                                  type="radio"
+                                  name={`preg-${p.id}`}
+                                  checked={respuestasForm[p.id] === false}
+                                  onChange={() => handlePreguntaChange(p.id, false)}
+                                />
+                                <span>No / No Cumple</span>
+                              </label>
+                            </div>
+                          ) : (
+                            <label className="checkbox-label" style={{ marginTop: '6px' }}>
+                              <input
+                                  type="checkbox"
+                                  checked={!!respuestasForm[p.id]}
+                                  onChange={(e) => handlePreguntaChange(p.id, e.target.checked)}
+                              />
+                              <span>Declaratoria de conformidad</span>
+                            </label>
+                          )}
+                        </div>
+                      ))}
                     </div>
 
-                    <div className="modal__field">
-                      <label className="modal__label">Observaciones y Comentarios Finales *</label>
-                      <textarea 
-                        className="modal__textarea"
-                        required
-                        rows={4}
-                        placeholder="Escriba aquí los términos y condiciones de la resolución o las observaciones metodológicas..."
-                        value={a12_observaciones}
-                        onChange={(e) => setA12Observaciones(e.target.value)}
-                      />
-                    </div>
+                    {/* FASE 3: OBSERVACIONES ESPECÍFICAS POR PÁGINA (Solo para Evaluación Anexo 12) */}
+                    {activeAnexoId === 'anexo-12' && (
+                      <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>
+                          Observaciones al PDF por Página
+                        </h4>
+                        
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <textarea
+                            className="form-input"
+                            placeholder="Describa la observación en el documento..."
+                            rows={2}
+                            value={nuevoComentarioTexto}
+                            onChange={(e) => setNuevoComentarioTexto(e.target.value)}
+                            style={{ flex: 1, fontSize: '12px' }}
+                          />
+                          <button
+                            type="button"
+                            className="eval-btn eval-btn--outline"
+                            onClick={handleAgregarAnotacion}
+                            style={{ fontSize: '11px', padding: '6px 10px', alignSelf: 'flex-end', whiteSpace: 'wrap', maxWidth: '100px' }}
+                          >
+                            Agregar en Pág. {pdf.currentPage}
+                          </button>
+                        </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
-                      <button 
-                        className="eval-btn eval-btn--outline" 
-                        style={{ color: '#ef4444', borderColor: '#fca5a5' }}
-                        onClick={handleAnularProyecto}
-                      >
-                        Rechazar / Anular (A26)
-                      </button>
-                      <button 
-                        className="eval-btn eval-btn--primary" 
-                        onClick={handleFinalizarAprobacion}
-                        disabled={Object.values(a12_respuestas).some(val => val === false)}
-                      >
-                        Aprobar Proyecto (A13)
-                      </button>
-                    </div>
-                    {Object.values(a12_respuestas).some(val => val === false) && (
-                      <p style={{ margin: 0, fontSize: '11px', color: '#92400e', textAlign: 'center' }}>
-                        (La aprobación requiere que todos los checklist de evaluación técnica sean verdaderos)
-                      </p>
+                        {/* Listado de Anotaciones en la Ronda */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                          {anotaciones.length === 0 ? (
+                            <p style={{ fontSize: '11px', color: '#64748b', margin: 0, fontStyle: 'italic' }}>
+                              Ninguna anotación específica registrada.
+                            </p>
+                          ) : (
+                            anotaciones.map((anot) => (
+                              <div key={anot.id} style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '6px 10px', borderRadius: '6px', fontSize: '11.5px' }}>
+                                <span style={{ flex: 1, color: '#334155' }}>
+                                  <strong>Pág. {anot.paginaPdf}:</strong> "{anot.texto}"
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEliminarAnotacion(anot.id)}
+                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 4px', fontSize: '13px' }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     )}
+
+                    {/* BOTÓN GENERAL DE GUARDAR BORRADOR EN ANEXO */}
+                    <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #cbd5e1', paddingTop: '12px' }}>
+                      <button type="button" className="eval-btn eval-btn--outline" onClick={handleGuardarBorrador} style={{ fontSize: '12px' }}>
+                        Guardar Borrador
+                      </button>
+                      <button type="button" className="eval-btn eval-btn--outline eval-btn--danger" onClick={() => setShowEscalarModal(true)} style={{ fontSize: '12px', marginLeft: 'auto' }}>
+                        Escalar a Admin
+                      </button>
+                    </div>
+
+                    {/* HISTORIAL DE RONDAS DE EVALUACIÓN ANTERIORES (Para Anexo 12) */}
+                    {activeAnexoId === 'anexo-12' && rondasPreviasA12.length > 0 && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', marginTop: '10px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 700, color: '#334155' }}>
+                          Historial de Evaluaciones de Rondas Anteriores
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {rondasPreviasA12.map((ron, rIdx) => (
+                            <div key={ron.id} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px' }}>
+                              <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#475569' }}>
+                                Ronda #{rIdx + 1} (Archivo Evaluado: {documento.versionesArchivo.find(v => v.id === ron.versionArchivoId)?.documentName || 'Desconocido'})
+                              </p>
+                              <p style={{ margin: '2px 0 6px 0', fontSize: '10px', color: '#64748b' }}>
+                                Evaluado el: {new Date(ron.emitidoAt).toLocaleString()} por {ron.emitidoPorNombre}
+                              </p>
+                              <ul style={{ margin: 0, paddingLeft: '14px', fontSize: '11px', color: '#475569' }}>
+                                {ron.comentariosAnotados.map(c => (
+                                  <li key={c.id}>
+                                    <strong>Pág. {c.paginaPdf}:</strong> "{c.texto}"
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ====================================================================
+                        ACCIONES FINALES SEGÚN LA ETAPA ACTIVA
+                        ==================================================================== */}
+                    
+                    {/* ACCIONES DE ESTRATIFICACIÓN (Etapa 2) */}
+                    {documento.estado === 'estratificacion' && activeAnexoId === 'anexo-27' && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#eff6ff', padding: '14px', borderRadius: '8px' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e3a8a' }}>Resolución de Estratificación (Etapa 1 CEISH)</h4>
+                        
+                        {/* Opción 1: Confirmar Sin Riesgo */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <button type="button" className="eval-btn eval-btn--primary" onClick={handleConfirmarExencion} style={{ width: '100%' }}>
+                            Confirmar Exención Ética (Anexo 11)
+                          </button>
+                          <span style={{ fontSize: '10.5px', color: '#1e40af' }}>✓ Confirma que el proyecto carece de riesgos éticos y lo transiciona a la Etapa 2 de revisión metodológica.</span>
+                        </div>
+
+                        {/* Opción 2: Reclasificar Riesgo (Desviación) */}
+                        <div style={{ borderTop: '1px solid #bfdbfe', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyItems: 'center', gap: '8px' }}>
+                            <select 
+                              className="form-input" 
+                              value={nuevoRiesgoEleccion} 
+                              onChange={(e) => setNuevoRiesgoEleccion(e.target.value as RiesgoTipo)}
+                              style={{ fontSize: '12px', flex: 1, padding: '4px' }}
+                            >
+                              <option value="riesgo-minimo">Riesgo Mínimo</option>
+                              <option value="riesgo-mayor">Riesgo Mayor</option>
+                            </select>
+                            <button type="button" className="eval-btn eval-btn--outline" onClick={handleElevarRiesgo} style={{ fontSize: '11px' }}>
+                              Elevar Riesgo
+                            </button>
+                          </div>
+                          <span style={{ fontSize: '10.5px', color: '#6b7280' }}>⚠️ Cambia la estratificación; al ser riesgo mínimo/mayor, el trámite quedará fuera de alcance para este prototipo.</span>
+                        </div>
+
+                        {/* Opción 3: Devolución y Conflicto */}
+                        <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #bfdbfe', paddingTop: '10px' }}>
+                          <button type="button" className="eval-btn eval-btn--sm eval-btn--outline" onClick={() => setShowDevolverModal(true)} style={{ flex: 1 }}>
+                            Devolver para Correcciones
+                          </button>
+                          <button type="button" className="eval-btn eval-btn--sm eval-btn--danger" onClick={() => setShowConflictoModal(true)} style={{ flex: 1 }}>
+                            Declarar Conflicto (Anexo 23)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ACCIONES DE EVALUACIÓN TÉCNICA (Etapa 3) */}
+                    {documento.estado === 'revision-tecnica' && activeAnexoId === 'anexo-12' && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#334155' }}>Dictamen de Revisión Metodológica</h4>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {/* Botón A: Aprobar Proyecto */}
+                          <button type="button" className="eval-btn eval-btn--primary" onClick={handleAprobarProyecto} style={{ width: '100%', background: '#16a34a' }}>
+                            Aprobar Proyecto (Anexo 13)
+                          </button>
+
+                          {/* Botón B: No Aprobar (Devolver con observaciones) */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <button 
+                              type="button" 
+                              className="eval-btn eval-btn--outline" 
+                              onClick={handleNoAprobarDevolver} 
+                              disabled={anotaciones.length === 0}
+                              style={{ width: '100%', borderColor: '#d97706', color: '#d97706' }}
+                            >
+                              No Aprobar (Devolver con Observaciones)
+                            </button>
+                            {anotaciones.length === 0 && (
+                              <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 600, textAlign: 'center' }}>
+                                (Requiere agregar al menos una observación por página en el panel superior)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Botón C: Dar de Baja */}
+                          <button type="button" className="eval-btn eval-btn--danger" onClick={handleDarDeBaja} style={{ width: '100%' }}>
+                            Dar de Baja la Investigación (Anexo 26)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
-                )}
+                );
+              })()}
 
-              </div>
-            )}
-
-          </div>
-
+            </div>
+          )}
         </div>
-
       </div>
 
-      {/* Modal Declaración de Conflictos de Interés (Anexo 23) */}
+      {/* 3. MODALES ADICIONALES DE CONTROL DE FLUJO */}
+
+      {/* Modal Declarar Conflicto (Anexo 23) */}
       {showConflictoModal && (
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowConflictoModal(false); }}>
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '450px' }}>
             <div className="modal__header">
-              <h2 className="modal__title" style={{ color: '#ef4444' }}>Declaración de Conflicto de Interés</h2>
-              <button className="modal__close" onClick={() => setShowConflictoModal(false)}>✕</button>
+              <h3 className="modal__title">Declaración de Conflicto de Intereses</h3>
             </div>
-            <div className="modal__body">
-              <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.4', margin: '0 0 14px 0' }}>
-                De acuerdo con las regulaciones de la plataforma CEISH, si usted tiene conflicto de interés (co-autoría, afinidad, asesoría directa, etc.) con los autores u objetos de este proyecto, debe reportarlo para inhibirse formalmente de participar en su evaluación.
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
+                Describa detalladamente el motivo de su conflicto de interés con el proyecto o sus autores (Anexo 23). Su asignación se cancelará ciegamente.
               </p>
-              <div className="modal__field">
-                <label className="modal__label">Motivo o causa de su conflicto de interés *</label>
-                <textarea 
-                  className="modal__textarea"
-                  required
-                  rows={4}
-                  placeholder="Detalle los motivos por los cuales no puede realizar la evaluación de manera neutral..."
-                  value={conflictoComentario}
-                  onChange={(e) => setConflictoComentario(e.target.value)}
-                />
-              </div>
+              <textarea
+                className="form-input"
+                rows={3}
+                value={conflictoComentario}
+                onChange={(e) => setConflictoComentario(e.target.value)}
+                placeholder="Escriba la causa de inhibición aquí..."
+                required
+              />
             </div>
-            <div className="modal__footer">
+            <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="eval-btn eval-btn--outline" onClick={() => setShowConflictoModal(false)}>Cancelar</button>
-              <button 
-                className="eval-btn eval-btn--primary" 
-                style={{ background: '#ef4444', borderColor: '#ef4444' }}
-                onClick={handleInhibirse}
-                disabled={!conflictoComentario.trim()}
-              >
-                Inhibirse (Emitir Anexo 23)
+              <button className="eval-btn eval-btn--danger" onClick={handleDeclararConflicto} disabled={!conflictoComentario.trim()}>
+                Confirmar Inhibición (A23)
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Devolver para Corrección (Sección 3.8) */}
+      {/* Modal Devolver para Observaciones */}
       {showDevolverModal && (
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowDevolverModal(false); }}>
-          <div className="modal">
+          <div className="modal" style={{ maxWidth: '450px' }}>
             <div className="modal__header">
-              <h2 className="modal__title" style={{ color: '#e29400' }}>Devolver Proyecto para Corrección</h2>
-              <button className="modal__close" onClick={() => setShowDevolverModal(false)}>✕</button>
+              <h3 className="modal__title">Devolver Proyecto para Correcciones</h3>
             </div>
-            <div className="modal__body">
-              <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.4', margin: '0 0 14px 0' }}>
-                Mueva el proyecto de vuelta al Investigador en estado de borrador para que pueda corregir los puntos metodológicos o documentos faltantes que le indique abajo.
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
+                Indique los motivos detallados por los cuales se devuelve el proyecto al investigador en estado Borrador.
               </p>
-              <div className="modal__field">
-                <label className="modal__label">Observaciones y Puntos a corregir *</label>
-                <textarea 
-                  className="modal__textarea"
-                  required
-                  rows={5}
-                  placeholder="Detalle exactamente qué correcciones o justificaciones debe ingresar el investigador para que el protocolo sea evaluable..."
-                  value={devolucionComentario}
-                  onChange={(e) => setDevolucionComentario(e.target.value)}
-                />
-              </div>
+              <textarea
+                className="form-input"
+                rows={3}
+                value={devolucionComentario}
+                onChange={(e) => setDevolucionComentario(e.target.value)}
+                placeholder="Escriba los comentarios u observaciones aquí..."
+                required
+              />
             </div>
-            <div className="modal__footer">
+            <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="eval-btn eval-btn--outline" onClick={() => setShowDevolverModal(false)}>Cancelar</button>
-              <button 
-                className="eval-btn eval-btn--primary" 
-                style={{ background: '#e29400', borderColor: '#e29400' }}
-                onClick={handleDevolverProyecto}
-                disabled={!devolucionComentario.trim()}
-              >
-                Devolver Proyecto (Estado Borrador)
+              <button className="eval-btn eval-btn--primary" onClick={handleDevolverInvestigador} disabled={!devolucionComentario.trim()}>
+                Enviar observaciones
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal Escalar a Administrador */}
+      {showEscalarModal && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowEscalarModal(false); }}>
+          <div className="modal" style={{ maxWidth: '450px' }}>
+            <div className="modal__header">
+              <h3 className="modal__title">Escalar Anexo a Administrador</h3>
+            </div>
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
+                Escriba el comentario o duda sobre este anexo. El administrador podrá editar directamente el anexo para resolver el caso oficial.
+              </p>
+              <textarea
+                className="form-input"
+                rows={3}
+                value={escalamientoComentario}
+                onChange={(e) => setEscalamientoComentario(e.target.value)}
+                placeholder="Describa el motivo de la consulta..."
+                required
+              />
+            </div>
+            <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className="eval-btn eval-btn--outline" onClick={() => setShowEscalarModal(false)}>Cancelar</button>
+              <button className="eval-btn eval-btn--primary" onClick={handleEscalarAdmin} disabled={!escalamientoComentario.trim()}>
+                Escalar caso
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

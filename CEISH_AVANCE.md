@@ -22,17 +22,17 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
 ### 📝 Fase 2: Interfaz del Investigador Dinámica
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
-| **2.1 Autores por Cédula y Conflicto Automático** | ⏳ Pendiente | Captura de autores por cédula con autocompletado en `CrearInvestigacionModal`, detectando automáticamente si son evaluadores del CEISH para marcarlos en conflicto. |
-| **2.2 Formulario de Llenado Dinámico** | ⏳ Pendiente | Renderizado dinámico de anexos obligatorios/opcionales de la Etapa 1 según el `TipoDocumento`. Navegación libre. Botón "Completar" condicionado a obligatorios. |
-| **2.3 Subida de Correcciones en Rondas** | ⏳ Pendiente | Habilitar subida de un nuevo PDF correctivo desde el dashboard si el revisor devolvió con observaciones (`con-observaciones`) en `'revision-tecnica'`. |
+| **2.1 Autores por Cédula y Conflicto Automático** | ✅ Completado | Captura de autores por cédula con autocompletado en [CrearInvestigacionModal.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/CrearInvestigacionModal.tsx), detectando de forma automática a evaluadores registrados para conflicto. |
+| **2.2 Formulario de Llenado Dinámico** | ✅ Completado | Renderizado dinámico de los anexos obligatorios/opcionales de la Etapa 1 según el `TipoDocumento` y navegación libre en [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx). |
+| **2.3 Subida de Correcciones en Rondas** | ✅ Completado | Caja de subida de PDF correctivo y justificación en [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) si el revisor devolvió con observaciones (`con-observaciones`) en `'revision-tecnica'`. |
 
 ### 🔍 Fase 3: Interfaz del Revisor Dinámica
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
-| **3.1 Dashboard de Evaluaciones Ciega** | ⏳ Pendiente | Listado de asignaciones activas filtradas por revisor y etapa, con estricta ocultación de la identidad de los autores. |
-| **3.2 Evaluación Dinámica Split-Screen** | ⏳ Pendiente | Carga dinámica de pestañas de anexos y preguntas según la sección activa del trámite. Integración con `<PDFViewer>` y cache de sesión. |
-| **3.3 Historial de Rondas y Anotaciones por Página** | ⏳ Pendiente | Bandeja de observaciones específicas por página del PDF (Anexo 12) y panel visual del histórico de observaciones de versiones de archivo anteriores. |
-| **3.4 Disparadores de Acciones Especiales** | ⏳ Pendiente | Acciones programadas a mano: Carta de exención (Anexo 11), inhibición/reasignación por conflicto (Anexo 23), aprobación (Anexo 13) y suspensión (Anexo 26). |
+| **3.1 Dashboard de Evaluaciones Ciega** | ✅ Completado | Listado de asignaciones activas filtradas por revisor y etapa, con estricta ocultación de la identidad de los autores en [EvaluatorDashboard.tsx](file:///C:/Users/PC/Desktop/CHEISH Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/EvaluatorDashboard.tsx). |
+| **3.2 Evaluación Dinámica Split-Screen** | ✅ Completado | Carga dinámica de pestañas de anexos y preguntas según la sección activa del trámite. Integración con `<PDFViewer>` y cache de sesión en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx). |
+| **3.3 Historial de Rondas y Anotaciones por Página** | ✅ Completado | Bandeja de observaciones específicas por página del PDF (Anexo 12) y panel visual del histórico de observaciones de versiones de archivo anteriores en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx). |
+| **3.4 Disparadores de Acciones Especiales** | ✅ Completado | Acciones programadas a mano: Carta de exención (Anexo 11), inhibición/reasignación por conflicto (Anexo 23), aprobación (Anexo 13) y suspensión (Anexo 26) en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx). |
 
 ---
 
@@ -47,4 +47,6 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
   * Creación del archivo de seguimiento [CEISH_AVANCE.md](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/CEISH_AVANCE.md).
   * **Tarea 1.1 completada:** Adición de tipos TypeScript específicos para el Motor Configurable en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts).
   * **Tareas 1.2, 1.3 y 1.4 completadas:** Implementación de acciones CRUD dinámicas y seed atómico por helpers puros en el store de Zustand [ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts). Creación y estilizado de las pantallas de administración interactiva [AnexoTemplateCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/AnexoTemplateCRUD.tsx) y [TipoDocumentoCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/TipoDocumentoCRUD.tsx). Integración de rutas en el panel y sidebar de navegación de administrador en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) y en el [router](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/app/router/index.tsx).
+  * **Tareas 2.1, 2.2 y 2.3 completadas:** Migración de la interfaz del Investigador. Autocompletado de co-autores por cédula con detección de conflictos en [CrearInvestigacionModal.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/CrearInvestigacionModal.tsx). Formulario de llenado dinámico de anexos (1 a 9) condicionado a obligatoriedad para el envío de revisión, y adición del panel de subida de PDF correctivo ante observaciones técnicas metodológicas en [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx).
+
 
