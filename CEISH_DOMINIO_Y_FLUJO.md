@@ -1,168 +1,237 @@
-# CEISH — Documento de Dominio y Flujo (contexto para el agente)
+# CEISH — Documento de Dominio y Flujo (v3 — Motor Configurable)
 
 > Este documento describe **qué** hace el sistema y **por qué**, a nivel de negocio.
 > El `CLAUDE.md` del repo describe **cómo** está construido técnicamente.
 > El agente debe leer ambos documentos antes de proponer o implementar cualquier cambio.
 >
-> **Fase actual: PROTOTIPO FUNCIONAL.** No es un maquetado estático (no basta con
-> que "se vea bien") ni un MVP (no requiere persistencia real ni endpoints
-> productivos). Es un prototipo **interactivo**: el flujo completo debe poder
-> recorrerse de punta a punta (crear investigación → estratificación → ciclo de
-> observaciones → aprobación/baja) y los datos deben comportarse de forma
-> consistente entre pantallas (si el investigador crea una investigación, debe
-> aparecer en el dashboard; si el revisor emite un anexo, el estado debe
-> cambiar en todas las pantallas que lo muestran).
+> **Cambio de fondo respecto a v2:** lo que antes era "fuera de alcance para
+> esta fase" (un motor de flujo configurable por el admin) ahora es el
+> **núcleo del sistema**. El flujo de "Investigación sin riesgo" que ya se
+> había construido (tipos, store, pantallas de investigador y revisor) **no
+> se descarta**: se migra para convertirse en el primer **tipo de documento**
+> configurado dentro de este motor nuevo, usando los mismos anexos (1-9, 11,
+> 12, 13, 23, 26, 27) reorganizados en 3 etapas explícitas.
 >
-> Esto se logra con una **capa de datos compartida simulada** (un store, ej.
-> Zustand, que actúa como "backend falso" en memoria del navegador). Esta capa:
-> - SÍ debe comportarse como un backend real: crear, leer y actualizar
->   investigaciones/anexos/asignaciones de forma consistente en toda la app.
-> - NO persiste al recargar la página (o puede resetearse a datos semilla).
-> - NO toca `src/lib/database.ts`, `src/server/`, `docker-compose.yml` ni
->   `database/schema.sql` — eso es trabajo de una fase posterior, cuando se
->   conecte esta misma lógica a los endpoints reales que ya documenta
->   `CLAUDE.md`.
+> **Fase actual: PROTOTIPO FUNCIONAL.** Interactivo, con una capa de datos
+> compartida simulada (Zustand + `persist` en `localStorage`, clave
+> `ceish-prototype-storage`). No toca `src/lib/database.ts`, `src/server/`,
+> `docker-compose.yml` ni `database/schema.sql`.
 >
-> **Alcance funcional de esta fase:** únicamente la rama de investigaciones
-> **"sin riesgo"**, de principio a fin. Las ramas de riesgo mínimo / mayor al
-> mínimo se mencionan para no perder el contexto general del sistema, pero
-> **no se prototipan todavía**.
+> **Alcance funcional de esta fase:** el motor configurable completo (tipos
+> de documento, secciones, anexos, preguntas) + el flujo de "Investigación"
+> ya construido, migrado a ese motor. Los demás tipos de documento (Tesis,
+> Artículo científico, etc.) son casos de uso que el admin **podrá crear**
+> con el motor, pero no vienen predefinidos más allá de "Investigación".
 
 ---
 
-## 1. Roles
+## 1. Roles (sin cambios)
 
 | Rol | Alias | Puede hacer |
 |---|---|---|
-| **investigador** | — | Crear investigaciones, subir documentos/correcciones, ver estado, ver comentarios |
-| **docente / revisor / evaluador / "miembro del CEISH"** | son el mismo rol | Revisar investigaciones asignadas, emitir anexos, darse de baja de una asignación por conflicto de interés, ver historial |
-| **administrador** | — | Gestionar usuarios (ascender investigador → revisor), asignar/reasignar investigaciones, gestionar anexos/formularios (crear, editar, eliminar), gestionar flujos de revisión completos, aprobar solicitudes de investigador externo |
+| **investigador** | — | Crear documentos, llenar anexos de su rol, subir versiones, ver estado, ver observaciones |
+| **docente / revisor / evaluador / "miembro del CEISH"** | mismo rol | Revisar documentos asignados, llenar anexos de su rol, escalar al admin, devolver al investigador, darse de baja por conflicto de interés |
+| **administrador** | — | Todo lo anterior (puede ser revisor también) + gestionar usuarios + **motor configurable** (tipos de documento, secciones, anexos, preguntas) + resolver escalamientos + mensajería |
 
-Reglas de combinación de roles:
-- Todo usuario nuevo (no admin) entra como **investigador** por defecto.
-- Un **revisor sigue siendo investigador también** (ambas vistas y funcionalidades disponibles para la misma persona).
-- El **administrador también puede ser revisor** (tiene ambos paneles).
-- El rol no es excluyente: es un conjunto de permisos acumulativos, con "investigador" como base.
+Reglas de combinación de roles: sin cambios respecto a v2 (investigador es la base; revisor y admin acumulan permisos, no los reemplazan).
 
-## 2. Autenticación (fuera de alcance de esta fase — solo contexto)
+## 2. Autenticación (fuera de alcance de esta fase — sin cambios)
 
-- Usuarios ULEAM: login directo vía Microsoft 365 (correo institucional).
-- Usuarios externos: se registran, describen su investigación/autores/afiliación; el admin valida si hay convenio institucional o si algún autor pertenece a ULEAM, y aprueba o rechaza la solicitud manualmente. Al aprobar, se habilita la cuenta como investigador normal.
-- **Para el prototipo se sigue usando el login/credenciales seed que ya existen. No se implementa esto todavía.**
+Sigue igual que v2: login simulado con credenciales seed, sin JWT ni Microsoft 365 real.
 
-## 3. Entidades clave (para el modelo de datos mock; no se persiste aún)
+## 3. El motor configurable — conceptos nuevos
 
-- **Investigación**: tema, descripción, autores, tipo de riesgo (sin riesgo / mínimo / mayor al mínimo), código identificador único, estado actual, historial de versiones de archivo, historial de estados por etapa.
-- **Miembro CEISH declarado en la investigación**: el investigador marca si algún docente de la plataforma es autor/miembro de su investigación, para excluirlo de la asignación aleatoria (conflicto de interés estructural).
-- **Asignación**: investigación ↔ revisor(es). 1 revisor si es "sin riesgo"; 2 revisores si es riesgo mínimo o mayor al mínimo.
-- **Anexo (plantilla de formulario)**: número, nombre, tipo de campos (checklist / checklist + comentarios / solo comentarios / solo cumple–no cumple), editable por el admin, exportable a Word/PDF con los valores llenados.
-- **Emisión de anexo** (instancia): anexo + investigación + etapa + versión + quién lo emitió + fecha + resultado.
-- **Comentario/anotación**: texto + página del PDF + quién lo dejó + a qué anexo/campo pertenece. Todos los roles pueden dejar comentarios (ej. el investigador señala a qué objetivo apunta cada pregunta de su encuesta).
-- **Etapa de flujo**: agrupa uno o más anexos; el flujo completo es una secuencia de etapas configurable por el admin (pensando a futuro en otros tipos de documento: tesis, filosóficas, experimentales, etc., cada uno con su propio flujo de anexos).
-- **Plazo/deadline**: opcional, asociado a una emisión de anexo o etapa (ej. 30 días para que el investigador corrija). Al vencer sin corrección puede gatillar el Anexo 26 (baja).
-- **Cronómetro de ejecución de la investigación**: arranca cuando el documento es aprobado (no antes) y se recalcula automáticamente en cada aprobación.
-
-## 4. Flujo general (rama "sin riesgo" — único alcance de esta fase)
+Esta es la pieza central de la v3. Reemplaza la idea de "4 etapas fijas" (o incluso "2 etapas fijas de Investigación") por una jerarquía configurable:
 
 ```
-1. Investigador crea investigación
-   → tema, descripción, autores, tipo de riesgo declarado (sin riesgo / mínimo / mayor)
-   → declara si algún miembro CEISH es autor/parte de la investigación
-2. Sistema asigna código identificador único
-3. Investigador solicita revisión
-4. Sistema asigna un revisor ALEATORIO
-   (excluye automáticamente a cualquier miembro CEISH declarado como parte de la investigación)
-
-── ETAPA 1: ESTRATIFICACIÓN ──────────────────────────────────
-5. Revisor asignado revisa Anexos 1–9 (formulario, ya llenados/adjuntados por el investigador)
-6. Revisor confirma o cambia el tipo de riesgo declarado por el investigador
-   - Si coincide → avanza
-   - Si no coincide → el revisor lo corrige, o devuelve el documento al investigador para que
-     ajuste (en CUALQUIER etapa el documento puede regresar a una etapa previa)
-   - El formulario de esta etapa usa los campos del Anexo 27 (Estratificación de Riesgos)
-7. [Rama "sin riesgo"] Revisor emite Anexo 11: justifica exención de revisión ética
-   (no involucra seres humanos → no aplica riesgo mínimo/mayor)
-   [Ramas riesgo mínimo/mayor: fuera de alcance de esta fase]
-8. El revisor de estratificación puede darse de baja de la investigación por conflicto de
-   interés no detectado antes → emite Anexo 23. La investigación se reasigna a otro revisor,
-   que CONTINÚA desde el punto donde quedó (no repite la etapa desde cero). El revisor
-   anterior queda libre para nuevas asignaciones.
-
-── ETAPA 2: REVISIÓN TÉCNICA (ciclo de observaciones) ────────
-9. [Sin riesgo → 1 solo revisor asignado. Riesgo mínimo/mayor → 2 revisores; fuera de alcance
-   ahora, pero el modelo de datos debe soportar N revisores por investigación.]
-10. Revisor emite Anexo 12 (checklist + campos de detalle/observaciones)
-    - Si NO hay observaciones → se emite Anexo 13 (aprobado), notifica al investigador → FIN (aprobado)
-    - Si SÍ hay observaciones → pasa al investigador
-11. Investigador tiene 30 días (plazo configurable) para subir corrección
-    - El archivo anterior NO se borra: se archiva para control de versiones (visible al investigador)
-    - Si excede el plazo → se emite Anexo 26 (baja/anulación), el proceso termina.
-      Retomar = crear una investigación nueva desde cero.
-    - Si corrige a tiempo → vuelve al revisor, se re-emite Anexo 12 con las nuevas indicaciones
-12. Este ciclo (Anexo 12 con observaciones ↔ corrección del investigador) se repite hasta que:
-    a) Anexo 12 sin observaciones + Anexo 13 (aprobado) → FIN exitoso
-    b) El revisor decide dar de baja por exceso de correcciones (3–5 ciclos, a su criterio,
-       NO es obligatorio) → Anexo 26 con justificación
+Tipo de Documento (ej. "Investigación", "Tesis", "Artículo científico")
+  └─ Sección / Etapa (ej. "Creación", "Estratificación", "Evaluación")
+       └─ Anexo (plantilla reutilizable entre tipos de documento, ej. "Anexo 27")
+            └─ Pregunta (checklist / texto abierto / sí-no, con descripción opcional)
 ```
 
-### Diagrama de estados de una investigación (simplificado, rama sin riesgo)
+**Reglas de este motor:**
 
-`creada → estratificación → (sin riesgo confirmado) → revisión técnica (ciclo Anexo 12) → aprobada (Anexo 13) | anulada (Anexo 26)`
+- **Los anexos son reutilizables entre tipos de documento.** El admin crea el Anexo 27 una sola vez; puede agregarlo tanto al tipo "Investigación" como a un futuro tipo "Tesis" sin duplicar la plantilla.
+- **El orden de los anexos dentro de una sección es solo visual/de presentación.** El usuario puede saltar libremente entre ellos — no hay bloqueo secuencial estricto.
+- **Cada anexo se marca como obligatorio u opcional** al crearlo (ej. Anexo 23 es opcional — solo se llena si hay conflicto de interés).
+- **Cada anexo tiene un rol asignado** (Investigador o Evaluador) — determina quién lo ve/llena.
+- **Una sección se puede "completar"** cuando todos sus anexos obligatorios fueron guardados al menos una vez; los opcionales no bloquean el avance. El botón "Completar etapa" se activa solo bajo esa condición.
+- **El admin crea las preguntas de cada anexo** con tipo (checklist / texto abierto / sí-no) y una descripción/tema opcional antes de cada pregunta para dar contexto.
+- **Comportamientos especiales por anexo (ej. Anexo 23 dispara reasignación de evaluador) se programan a mano, caso por caso** — no existe (por ahora) un sistema genérico donde el admin configure "qué acción dispara este anexo".
+- **Progreso persistente:** los formularios guardados se mantienen aunque el usuario salga de la etapa sin completar todos los anexos.
 
-En cualquier punto puede haber un salto hacia atrás a una etapa previa (devolución por criterio del revisor).
+### Migración del flujo "Investigación" a este motor
 
-## 5. Reglas transversales (aplican a todo el flujo)
+El tipo de documento "Investigación" queda configurado (como dato semilla) con esta estructura — es la reorganización del flujo que ya se había construido, ahora expresada como configuración en vez de código hardcodeado:
 
-- **Revisión ciega en ambas direcciones**: el investigador no ve quién es su revisor, y el revisor no ve quién es el investigador.
-- **Todo formulario/anexo es configurable por el admin**: tipo de campos (checklist / checklist + comentarios / solo comentarios / cumple–no cumple), y se puede agregar, editar o eliminar un anexo/etapa completa. El flujo de etapas **no debe estar hardcodeado**: es un motor de flujo configurable, aunque en esta fase de prototipo se puede simular con datos fijos.
-- **Exportación**: cualquier anexo lleno (con su checklist/comentarios marcados) debe poder descargarse como Word (y PDF) con el formato original del anexo y los valores reflejados.
-- **Versionamiento de archivos**: cada corrección sube un nuevo archivo; el anterior se conserva y es visible en el historial, no se borra.
-- **Persistencia de progreso**: si un revisor sale de la pantalla de revisión a medias, su progreso (checks marcados, comentarios escritos) debe quedar guardado.
-- **Comentarios con ubicación**: los comentarios de revisión están ligados a una página del PDF, y son visibles para el investigador cuando se le devuelve el documento.
-- **Fechas y tiempos**: cada acción (subida, corrección, emisión de anexo) guarda su fecha; el cronómetro de ejecución de la investigación arranca solo al aprobarse (no antes) y se recalcula en cada aprobación.
-- **Plazos (deadlines) independientes**: el plazo que el administrador le pone al revisor y el plazo que el revisor le pone al investigador **no están relacionados entre sí** — son dos configuraciones independientes, sin validación cruzada.
-- **Notificaciones**: solo dentro de la aplicación por el momento (sin correo/push).
-- **Extensibilidad a futuro (no construir ahora, pero no bloquear el diseño)**: hoy solo existe el flujo de "investigación normal"; el admin debe poder crear flujos nuevos completos (con sus propios anexos) para otros tipos de documento (tesis, estudios filosóficos, experimentales, etc.), y el investigador elegirá el tipo al subir su documento.
+```
+Tipo de Documento: "Investigación"
 
-## 6. Catálogo de anexos relevantes para esta fase (rama sin riesgo)
+  Etapa 1: Creación de Investigación          [todos los anexos: rol Investigador]
+    - Anexo 1 al Anexo 9 (obligatorios, formulario)
 
-| Anexo | Uso en el flujo |
+  Etapa 2: Estratificación                    [todos los anexos: rol Evaluador]
+    - Anexo 27: Estratificación de Riesgo (obligatorio)
+    - Anexo 11: Carta de Exención (obligatorio — se llena si el riesgo es "sin riesgo")
+    - Anexo 23: Conflicto de Intereses (opcional — solo si aplica)
+
+  Etapa 3: Evaluación                         [todos los anexos: rol Evaluador]
+    - Anexo 12: Evaluación de Proyecto (obligatorio, se repite por ronda)
+    - Anexo 13: Resoluciones / Aprobación (obligatorio al cerrar)
+    - Anexo 26: Suspensión de Proyecto (opcional — a criterio del evaluador)
+```
+
+**Nota importante:** el "tipo de riesgo" (sin riesgo / mínimo / mayor) **ya no es un campo especial hardcodeado del sistema** — es, en la práctica, una consecuencia de que el tipo de documento incluya o no el Anexo 27 en su configuración. Si el admin crea un tipo de documento sin ese anexo, ese tipo simplemente no maneja estratificación de riesgo. El campo de riesgo vive dentro de las respuestas del Anexo 27, no como una propiedad aparte de `Investigacion`.
+
+## 4. Entidades clave (modelo de datos actualizado)
+
+- **TipoDocumento**: id, nombre (ej. "Investigación", "Tesis"), lista ordenada de `Seccion`.
+- **Seccion** (etapa): id, nombre, orden, lista de `AnexoAsignado` (referencia a un `AnexoTemplate` + flag `obligatorio`).
+- **AnexoTemplate**: id, número, nombre, rol (`investigador` | `evaluador`), lista de `Pregunta`. Reutilizable entre `TipoDocumento`s.
+- **Pregunta**: id, texto, tipo (`checklist` | `texto-abierto` | `si-no`), descripción/contexto opcional, orden.
+- **Documento** (antes `Investigacion`, generalizado): id, código único, `tipoDocumentoId`, tema, descripción, autores (por cédula), investigadorId, miembrosCeishDeclarados, estado, versionesArchivo, historialEstados, cronómetro.
+- **Autor**: cédula (identificador principal), nombre (autocompletado si la cédula corresponde a un usuario registrado; si no, queda solo la cédula).
+- **RespuestaAnexo** (antes `EmisionAnexo`, generalizado): id, `anexoTemplateId`, `documentoId`, `seccionId`, versión de archivo asociada, quién la llenó, fecha, respuestas por pregunta, resultado/acción disparada si aplica, **snapshot congelado** de las preguntas tal como estaban al momento de guardar (para auditoría — ver sección 8).
+- **Asignación**: documentoId, evaluadorId, tipo de sección, activo, motivo de baja si aplica.
+- **Escalamiento**: id, respuestaAnexoId adjunta (puede estar vacía/sin llenar), comentario del evaluador, estado (pendiente/resuelto), edición del admin (que se vuelve el registro oficial), notificación al evaluador.
+- **Notificación**: id, tipo (`automatica` | `manual`), destinatario(s), mensaje, leída/no leída, fecha.
+
+## 5. Flujo general — instancia "Investigación" (ejemplo sobre el motor)
+
+```
+1. Investigador crea un Documento, selecciona tipo "Investigación"
+   → tema, descripción, autores por cédula (autocompleta nombre si el usuario existe)
+   → el sistema cruza automáticamente cada cédula contra usuarios registrados:
+     si corresponde a un evaluador del CEISH, se marca conflicto de interés
+     automáticamente (si la cédula no está registrada, se deja pasar sin conflicto)
+2. Sistema asigna código único
+3. Investigador llena los Anexos 1-9 (Etapa 1) — puede saltar entre ellos libremente
+4. Una vez todos los obligatorios de Etapa 1 están guardados, se habilita
+   "Completar etapa" → se solicita revisión
+5. Sistema asigna un evaluador aleatorio, excluyendo conflictos de interés detectados
+
+── ETAPA 2: ESTRATIFICACIÓN ──────────────────────────────────
+6. Evaluador revisa los Anexos 1-9 ya llenados
+7. Evaluador llena Anexo 27 (Estratificación) — obligatorio
+8. Evaluador llena Anexo 11 (Exención) si aplica — obligatorio si sin riesgo
+9. [Opcional] Evaluador llena Anexo 23 (conflicto de interés) → se reasigna
+   automáticamente a otro evaluador, que continúa donde quedó
+10. En cualquier punto, el evaluador puede devolver el documento al
+    investigador (con comentario + opcionalmente cualquier anexo de esa
+    etapa como referencia de solo lectura, esté o no completado), o escalar
+    al admin (comentario + anexo adjunto). El proceso sigue corriendo en
+    paralelo mientras se resuelve el escalamiento; el evaluador puede seguir
+    llenando otros anexos de la misma etapa mientras tanto.
+11. Al completar los obligatorios de Etapa 2 → se habilita pasar a Etapa 3
+
+── ETAPA 3: EVALUACIÓN (ciclo de observaciones) ──────────────
+12. Evaluador llena Anexo 12 (Evaluación de Proyecto)
+    - Con observaciones → nueva RespuestaAnexo ligada a la versión de
+      archivo actual, el documento vuelve al investigador para corregir
+    - Sin observaciones → se llena Anexo 13 (Resoluciones/Aprobación) →
+      documento queda `aprobada`, inicia cronómetro
+13. [Opcional, a criterio del evaluador] Anexo 26 (Suspensión) en cualquier
+    momento de esta etapa → documento queda `anulada`
+14. Investigador sube nueva versión tras observaciones → nueva ronda,
+    vuelve al mismo evaluador, se crea una RespuestaAnexo nueva (nunca se
+    edita la anterior) → se repite hasta aprobación o anulación
+```
+
+## 6. Reglas transversales (actualizadas)
+
+- **Revisión ciega en ambas direcciones** (sin cambios).
+- **Notificaciones automáticas** (eventos del sistema: documento devuelto, anexo actualizado por el admin, escalamiento resuelto, etc.) **son un canal separado** de la **mensajería manual del admin** (mensajería libre, puede seleccionar uno o varios destinatarios, sin plantillas).
+- **Versionamiento**: cada corrección del investigador crea una nueva `VersionArchivo`; el anterior se conserva.
+- **Plazos independientes** entre admin→evaluador y evaluador→investigador (sin cambios de v2).
+- **Sin backend/DB real** en esta fase (sin cambios).
+
+## 7. Congelamiento y auditoría (reglas nuevas — importantes)
+
+Esta es la parte más delicada del sistema, resumida en una tabla de decisión:
+
+| Evento | ¿Qué pasa con las respuestas ya dadas? |
 |---|---|
-| 1–9 | Documentación inicial de la investigación (llenados/adjuntados por el investigador), revisados en Etapa 1 |
-| 27 | Formulario de Estratificación de Riesgos — Etapa 1 |
-| 11 | Carta de exención (investigación sin riesgo) — Etapa 1 |
-| 23 | Declaración de conflicto de interés (revisor se da de baja de una investigación) — Etapa 1 |
-| 12 | Checklist de evaluación técnica — corazón del ciclo de observaciones en Etapa 2 |
-| 13 | Formato de emisión de resolución final (aprobación, con o sin modificaciones menores) — Etapa 2 |
-| 26 | Suspensión/revocatoria de la aprobación (baja de la investigación) |
+| Admin edita el **texto** de una pregunta, documento **en proceso** (sin Anexo 13 emitido) | La respuesta existente a esa pregunta se **elimina**; se notifica automáticamente a los evaluadores involucrados |
+| Admin **elimina** una pregunta, documento en proceso | Se elimina la pregunta y su respuesta asociada |
+| Admin edita/elimina una pregunta, documento **ya cerrado** (Anexo 13 emitido) | **No afecta nada** — el `RespuestaAnexo` queda congelado tal como estaba al momento de la aprobación, para siempre |
+| Una sección ya fue marcada "completa" y el admin edita una de sus preguntas obligatorias | La sección **vuelve a estar "incompleta"**, salvo que el documento ya tenga Anexo 13 emitido (en cuyo caso no cambia nada) |
+| Admin modifica un anexo de la Etapa 1 (los que llena el investigador) | La modificación **solo aplica a documentos nuevos** creados desde ese momento — los ya existentes no se ven afectados |
+| Cualquier `RespuestaAnexo` ya guardada, en cualquier estado (incluidas rondas con observaciones ya superadas) | Guarda un **snapshot de las preguntas tal como estaban al momento de responder**, para que el historial de auditoría sea fiel a lo que realmente se preguntó, independientemente de ediciones futuras al `AnexoTemplate` |
 
-*(El resto del catálogo — anexos para riesgo mínimo/mayor, enmiendas, renovación, informes de avance/fin, caso de estudio — existe y ya se cuenta con los archivos .docx de referencia, pero no se prototipa en esta fase.)*
+## 8. Escalamiento al administrador
 
-## 7. Fuera de alcance explícito en esta fase
+- El evaluador puede escalar **cualquier anexo de la etapa actual** (llenado o vacío) junto con un comentario, para pedir opinión del admin.
+- El admin **edita directamente** ese anexo; su edición **se convierte en el registro oficial** (no es una nota paralela).
+- El **evaluador ve la edición del admin y es notificado automáticamente** del cambio.
+- El proceso **sigue corriendo en paralelo**: el evaluador puede seguir trabajando en otros anexos de la misma etapa mientras espera resolución del escalamiento.
 
-- Ramas de riesgo mínimo y riesgo mayor al mínimo (2 revisores, otros anexos).
-- Autenticación real / Microsoft 365 / flujo de aprobación de investigador externo.
-- Motor de flujo configurable real (por ahora se simula con datos fijos en el mock).
-- Exportación real a Word/PDF (se puede construir el botón, sin generar el archivo real).
-- Notificaciones reales (email, push) — se simula como UI dentro de la app usando la capa de datos compartida.
-- Persistencia en PostgreSQL/MinIO de todo lo anterior.
+## 9. Devolución al investigador
 
-## 8. Reglas de negocio confirmadas
+- El evaluador puede devolver el documento en cualquier punto de una etapa, con un comentario de justificación obligatorio.
+- Puede adjuntar **cualquier anexo de esa etapa como referencia de solo lectura**, esté completado o no.
+- El investigador ve el anexo adjunto (si lo hay) + el comentario, corrige lo que corresponda, y reenvía.
 
-- Si el revisor de Etapa 1 se da de baja y se reasigna, el nuevo revisor **continúa donde quedó** el anterior (no repite la etapa desde cero).
-- La revisión es **ciega en ambas direcciones**: investigador no ve revisor, revisor no ve investigador.
-- Las **notificaciones** se manejan solo dentro de la app por el momento.
-- Los **plazos del administrador (al revisor)** y del **revisor (al investigador)** son **independientes entre sí**, sin validación cruzada.
+## 10. Autoría por cédula
 
-## 9. Orden sugerido de construcción del prototipo (slices verticales, uno por vez)
+- El campo de autor usa **cédula como identificador principal** (reemplaza el nombre como dato de entrada).
+- Si la cédula corresponde a un usuario registrado, **el sistema autocompleta el nombre** automáticamente.
+- Si la cédula no está registrada, **queda solo el número**, sin nombre asociado.
+- La detección de conflicto de interés (miembro CEISH declarado) se hace **cruzando automáticamente** cada cédula de autor contra los usuarios registrados con rol evaluador — si no hay coincidencia, **se deja pasar sin conflicto detectado** (no se pide dato adicional).
 
-1. **Modelo mock de datos**: tipos TypeScript para Investigación, Anexo, Emisión de anexo, Asignación (sin tocar DB real).
-2. **Pantalla: Investigador → crear investigación** (formulario: tema, descripción, autores, tipo de riesgo declarado, marcar si algún miembro CEISH es autor).
-3. **Pantalla: Dashboard investigador** (lista de investigaciones + estado + código).
-4. **Pantalla: Dashboard evaluador** (investigaciones asignadas + cuadro informativo resumen del flujo).
-5. **Pantalla: Revisión Etapa 1 — Estratificación** (PDF a la izquierda, formulario Anexo 27 a la derecha).
-6. **Pantalla: Revisión Etapa 2 — Anexo 12** (checklist + observaciones, ciclo de corrección).
-7. **Pantallas de resolución**: Anexo 11 / 13 (aprobado) y Anexo 26 (baja), como modales o vistas de cierre.
-8. **Panel admin**: gestión de anexos/formularios (mock, para validar la UI de "editar campos de un anexo").
+## 11. Catálogo de anexos (sin cambios respecto a v2, ahora expresado como `AnexoTemplate`)
 
-Cada punto de esta lista = una tarea independiente para el agente, con un commit propio y revisión antes de avanzar al siguiente.
+| Anexo | Rol | Sección (tipo "Investigación") | Obligatorio |
+|---|---|---|---|
+| 1–9 | Investigador | Etapa 1: Creación | Sí |
+| 27 | Evaluador | Etapa 2: Estratificación | Sí |
+| 11 | Evaluador | Etapa 2: Estratificación | Sí |
+| 23 | Evaluador | Etapa 2: Estratificación | No |
+| 12 | Evaluador | Etapa 3: Evaluación | Sí |
+| 13 | Evaluador | Etapa 3: Evaluación | Sí |
+| 26 | Evaluador | Etapa 3: Evaluación | No |
+
+*(El resto del catálogo — anexos de riesgo mínimo/mayor, enmiendas, renovación, informes, caso de estudio — puede incorporarse después creando sus propios `AnexoTemplate` y agregándolos a un `TipoDocumento`, sin cambios de código, una vez el motor esté construido.)*
+
+## 12. Fuera de alcance explícito en esta fase
+
+- Contenido real de las preguntas de cada anexo extraído automáticamente de los `.docx` — **se descartó ese enfoque**; el admin crea las preguntas manualmente en el motor.
+- Ramas de riesgo mínimo/mayor con 2 evaluadores (siguen sin desarrollarse operativamente, aunque el motor ya no las excluye estructuralmente).
+- Autenticación real / Microsoft 365.
+- Exportación real a Word/PDF.
+- Persistencia en PostgreSQL/MinIO real.
+- Sistema genérico de "qué acción dispara qué anexo" (se programa a mano, caso por caso).
+
+## 13. Reglas de negocio confirmadas (registro de decisiones)
+
+- El tipo de riesgo puede aplicar a cualquier tipo de documento; si el admin no lo quiere, simplemente no incluye el Anexo 27 en ese tipo.
+- Los anexos son reutilizables entre tipos de documento.
+- El orden de anexos es visual, no bloqueante — se puede saltar libremente.
+- Una etapa se completa cuando todos sus anexos obligatorios están guardados; los opcionales no bloquean.
+- El ciclo de observaciones de la Etapa 3 funciona igual que en v2 (nueva `RespuestaAnexo` por ronda, nunca se edita la anterior).
+- Comportamientos especiales por anexo (ej. Anexo 23 → reasignación) se programan a mano.
+- Se puede adjuntar a una devolución cualquier anexo de la etapa, completado o no.
+- La edición del admin sobre un anexo escalado es el registro oficial; el evaluador es notificado.
+- El proceso sigue en paralelo durante un escalamiento.
+- La cédula reemplaza el nombre como dato de entrada de autor, con autocompletado si el usuario existe.
+- Sin coincidencia de cédula, no se detecta conflicto de interés (no se pide dato adicional).
+- Documentos cerrados (Anexo 13 emitido) quedan congelados para siempre ante cualquier edición futura de preguntas/anexos.
+- Documentos en proceso: editar el texto de una pregunta elimina la respuesta existente y notifica a los evaluadores; una etapa ya completa vuelve a quedar incompleta si se edita una de sus preguntas obligatorias (salvo que el documento ya esté cerrado).
+- Modificar un anexo de Etapa 1 solo afecta documentos nuevos, no los existentes.
+- Notificaciones automáticas (eventos del sistema) y mensajería manual del admin (libre, multi-destinatario) son canales separados.
+
+## 14. Orden sugerido de construcción del prototipo (slices verticales, migración)
+
+1. **Modelo de datos generalizado**: `TipoDocumento`, `Seccion`, `AnexoTemplate` (generalizado con `Pregunta[]`), `Documento` (renombrado de `Investigacion`), `RespuestaAnexo` (renombrado de `EmisionAnexo`, con snapshot de preguntas). Migración de los tipos existentes de la Fase 1 sin romper lo ya construido — **agregar, no reemplazar de golpe**.
+2. **Motor configurable del admin — CRUD de Anexos y Preguntas**: crear/editar/eliminar `AnexoTemplate`, agregar preguntas de los 3 tipos, con reglas de congelamiento aplicadas desde el inicio (aunque simplificado: primero que funcione crear/editar, después afinar el congelamiento).
+3. **Motor configurable del admin — CRUD de Tipos de Documento y Secciones**: crear un `TipoDocumento`, agregar secciones, asignar anexos existentes a cada sección (reutilizables), marcar obligatorio/opcional y el rol.
+4. **Seed**: configurar "Investigación" como el primer `TipoDocumento` usando el motor recién construido, con sus 3 etapas y 7 anexos (según la sección 5 de este documento) — reemplaza el hardcodeo anterior.
+5. **Investigador — crear documento**: selector de tipo de documento, autoría por cédula con autocompletado y detección de conflicto de interés, navegación libre entre anexos de Etapa 1, botón "Completar etapa" condicionado a obligatorios. **Corregir además el bug de navegación (falta botón de volver atrás)**.
+6. **Investigador — dashboards separados**: pantalla de "todas las revisiones y estados con fecha" y pantalla de "tareas pendientes" (documentos devueltos), como vistas independientes.
+7. **Evaluador — revisión dinámica por anexo**: interfaz que ya no asuma Anexo 11→12 fijo, sino que recorra los anexos de la sección actual según la configuración del `TipoDocumento`, con navegación libre entre ellos y guardado independiente por anexo.
+8. **Evaluador — devolución y escalamiento**: devolver al investigador (adjuntando cualquier anexo de la etapa) y escalar al admin (con proceso corriendo en paralelo).
+9. **Admin — resolución de escalamientos**: bandeja de escalamientos pendientes, edición del anexo escalado, notificación automática al evaluador.
+10. **Notificaciones**: automáticas (eventos) + mensajería manual multi-destinatario del admin.
+11. **Investigar y corregir el bug de asignación automática** que no aparece en el panel del evaluador (reportado, causa aún no confirmada).
+
+Cada punto = una tarea independiente, con plan antes de código y commit propio, igual que en las fases anteriores.

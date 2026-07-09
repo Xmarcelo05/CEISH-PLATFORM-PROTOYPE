@@ -53,118 +53,176 @@ export interface Assignment {
 }
 
 // ============================================================================
-// NUEVO DOMINIO CEISH (Fase: Prototipo Funcional - Flujo "Sin Riesgo")
+// NUEVO DOMINIO CEISH v3 (Motor Configurable de Workflow)
 // ============================================================================
 
 export type RiesgoTipo = 'sin-riesgo' | 'riesgo-minimo' | 'riesgo-mayor';
 
-export type InvestigacionEstado = 
-  | 'creada' 
-  | 'estratificacion' 
-  | 'revision-tecnica' 
-  | 'aprobada' 
-  | 'anulada';
+export type DocumentoEstado = 
+  | 'creada'             // Borrador inicial
+  | 'estratificacion'    // En Etapa 1 / 2 de la configuración
+  | 'revision-tecnica'   // En Etapa 2 / 3 de la configuración
+  | 'aprobada'           // Finalizado aprobado (Anexo 13)
+  | 'anulada';           // Finalizado rechazado/anulado (Anexo 26)
 
 export interface VersionArchivo {
   id: string;
   documentName: string;
-  documentPath: string; // Identificador o ruta del archivo en el Storage (MinIO)
+  documentPath: string; // ID en el cache en memoria o storage simulado
   comment?: string;
   uploadedAt: string;
 }
 
 export interface HistorialEstado {
-  estado: InvestigacionEstado;
+  estado: DocumentoEstado;
   changedAt: string;
-  changedBy: string; // Nombre o ID del usuario que realizó el cambio
+  changedBy: string; // Nombre del usuario que ejecutó el cambio
   comment?: string;
 }
 
 export interface Cronometro {
-  fechaAprobacion?: string; // Inicia al aprobarse la investigación (Anexo 13)
+  fechaAprobacion?: string; // Inicia al emitir aprobación (Anexo 13)
   diasEjecucion?: number;    // Días transcurridos o planificados
 }
 
-export interface Investigacion {
+export interface Autor {
+  cedula: string;
+  nombre: string; // Autocompletado si existe en el sistema
+}
+
+// ─── Motor Configurable: Preguntas y Plantillas de Anexos ───────────────────
+export type CampoTipo = 'checklist' | 'cumple-nocumple' | 'comentarios-solo' | 'texto-libre' | 'si-no';
+
+export interface Pregunta {
   id: string;
-  codigo: string; // Identificador único generado por el sistema, ej: "CEISH-2026-0001"
+  texto: string;
+  tipo: CampoTipo;
+  descripcionContexto?: string; // Texto descriptivo opcional antes de la pregunta
+  orden: number;
+}
+
+export interface AnexoTemplate {
+  id: string;
+  numero: number;
+  nombre: string;
+  rol: 'investigador' | 'evaluador';
+  preguntas: Pregunta[];
+}
+
+export interface AnexoAsignado {
+  anexoTemplateId: string;
+  obligatorio: boolean;
+}
+
+export interface Seccion {
+  id: string;
+  nombre: string;
+  orden: number;
+  anexos: AnexoAsignado[];
+}
+
+export interface TipoDocumento {
+  id: string;
+  nombre: string;
+  secciones: Seccion[];
+}
+
+// ─── Instancia de Trámite (Documento) ────────────────────────────────────────
+export interface Documento {
+  id: string;
+  codigo: string; // Generado, ej: "CEISH-2026-0001"
+  tipoDocumentoId: string; // Referencia a TipoDocumento
   tema: string;
   descripcion: string;
   investigadorId: string;
-  autores: string[]; // Lista de nombres de co-autores
+  autores: Autor[];
   riesgoDeclarado: RiesgoTipo;
   riesgoConfirmado?: RiesgoTipo;
-  miembrosCeishDeclarados: string[]; // IDs de evaluadores declarados con conflicto de interés
-  estado: InvestigacionEstado;
+  miembrosCeishDeclarados: string[]; // IDs de evaluadores excluidos (conflicto)
+  estado: DocumentoEstado;
   versionesArchivo: VersionArchivo[];
   historialEstados: HistorialEstado[];
   cronometro?: Cronometro;
   createdAt: string;
 }
 
-// ─── Plantillas de Anexos (Configurables) ────────────────────────────────────
-export type CampoTipo = 'checklist' | 'cumple-nocumple' | 'comentarios-solo' | 'texto-libre';
-
-export interface AnexoCampo {
-  id: string;
-  label: string;
-  tipo: CampoTipo;
-  opciones?: string[]; // Para opciones de tipo checklist si fuera necesario
+// ─── Respuestas a Anexos (Emisiones Llenadas con Snapshot) ───────────────────
+export interface ValorCampo {
+  campoId: string;
+  valor: any; // boolean para checklist/cumple/si-no, string para texto
+  observacion?: string;
 }
 
-export interface AnexoTemplate {
-  id: string;      // Identificador de plantilla, ej: "anexo-27"
-  numero: number;  // Número de anexo, ej: 27
-  nombre: string;  // Nombre descriptivo del anexo
-  campos: AnexoCampo[];
-}
-
-// ─── Instancias de Emisión de Anexos (Formularios Llenados) ───────────────────
 export interface ComentarioAnotacion {
   id: string;
   texto: string;
   paginaPdf?: number; // Ubicación en el PDF
   autorId: string;
   autorNombre: string;
-  campoId?: string; // Campo al que está ligado
+  campoId?: string;
   createdAt: string;
 }
 
-export interface ValorCampo {
-  campoId: string;
-  valor: any; // boolean para checklist/cumple, string para comentarios/texto
-  observacion?: string; // Observación específica para este campo
-}
-
-export interface EmisionAnexo {
+export interface RespuestaAnexo {
   id: string;
-  anexoId: string; // Referencia a AnexoTemplate
-  investigacionId: string;
-  etapa: 'estratificacion' | 'revision-tecnica';
-  versionArchivoId: string; // ID de la versión evaluada
-  emitidoPorId: string;     // ID del Revisor/Evaluador
+  anexoTemplateId: string;
+  documentoId: string;
+  seccionId: string; // ID dinámico de la Seccion
+  versionArchivoId: string; // Versión evaluada
+  emitidoPorId: string;
   emitidoPorNombre: string;
   emitidoAt: string;
   resultado: 
-    | 'coincide'            // Confirmación de exención de riesgo (Etapa 1)
-    | 'discrepa'            // Se corrige la estratificación
-    | 'aprobado'            // Aprobación final sin observaciones (Anexo 13)
-    | 'con-observaciones'   // Devuelto con observaciones (Anexo 12)
-    | 'baja'                // Suspensión/Revocatoria (Anexo 26)
-    | 'conflicto-interes';   // Revisor se da de baja (Anexo 23)
+    | 'coincide' 
+    | 'discrepa' 
+    | 'aprobado' 
+    | 'con-observaciones' 
+    | 'baja' 
+    | 'conflicto-interes';
   valores: ValorCampo[];
   comentariosAnotados: ComentarioAnotacion[];
+  snapshotPreguntas: Pregunta[]; // Snapshot congelado de las preguntas para auditoría
 }
 
-// ─── Asignación de Revisores ──────────────────────────────────────────────────
+// ─── Asignación de Revisores por Sección ─────────────────────────────────────
 export interface AsignacionCEISH {
   id: string;
-  investigacionId: string;
+  documentoId: string;
   evaluadorId: string;
-  tipoRevision: 'estratificacion' | 'revision-tecnica';
+  seccionId: string; // ID real y dinámico de la Seccion
   assignedAt: string;
-  active: boolean; // false si se da de baja (Anexo 23)
+  active: boolean; // false si se inhibe
   bajaMotivo?: string;
-  bajaAnexoId?: string; // ID del Anexo 23 que justifica la baja
+  bajaAnexoId?: string; // ID del RespuestaAnexo (Anexo 23)
 }
+
+// ─── Escalamientos ────────────────────────────────────────────────────────────
+export interface Escalamiento {
+  id: string;
+  respuestaAnexoId: string; // Puede enviarse vacío si no se ha respondido aún
+  documentoId: string;
+  seccionId: string;
+  anexoTemplateId: string;
+  comentarioEvaluador: string;
+  estado: 'pendiente' | 'resuelto';
+  edicionAdmin?: string; // El registro oficial
+  notificado: boolean;
+  createdAt: string;
+}
+
+// ─── Notificaciones y Mensajería ──────────────────────────────────────────────
+export interface Notificacion {
+  id: string;
+  tipo: 'automatica' | 'manual';
+  destinatarioId: string;
+  mensaje: string;
+  leida: boolean;
+  createdAt: string;
+}
+
+// Aliases de compatibilidad para evitar romper el compilador durante la migración
+export type Investigacion = Documento;
+export type EmisionAnexo = RespuestaAnexo;
+export type InvestigacionEstado = DocumentoEstado;
+
 
