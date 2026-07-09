@@ -8,6 +8,7 @@ import { EvaluatorDashboard } from '../../features/evaluator/EvaluatorDashboard'
 import { ReviewPage } from '../../features/evaluator/components/ReviewPage';
 import { AdminDashboard } from '../../features/admin/AdminDashboard';
 import { AssignmentPanel } from '../../features/admin/components/AssignmentPanel';
+import { ReviewCeishPage } from '../../features/evaluator/components/ReviewCeishPage';
 
 function RootRedirect() {
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -28,6 +29,7 @@ export function AppRouter() {
         <Route path="/evaluacion" element={<EvaluationPage />} />
         <Route path="/evaluacion/:id" element={<EvaluationPage />} />
         <Route path="/evaluador/revision/:submissionId" element={<ReviewPage />} />
+        <Route path="/evaluador/revision-ceish/:investigacionId" element={<ReviewCeishPage />} />
 
         {/* Dashboard routes wrapped in AppShell */}
         <Route element={<AppShell />}>

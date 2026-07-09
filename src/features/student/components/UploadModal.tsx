@@ -1,3 +1,4 @@
+// [DEPRECATED - sin uso desde Fase 2 CEISH] Se conserva como referencia de estilos, no se importa en ningún lado.
 import { useRef, useState } from 'react';
 import { validatePdf, MAX_MB } from '../../../services/storage';
 

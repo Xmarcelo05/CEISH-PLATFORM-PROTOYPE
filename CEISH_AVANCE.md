@@ -27,9 +27,9 @@ Construir un prototipo funcional interactivo para la rama de investigaciones **"
 ### 🔍 Fase 3: Flujo del Revisor (Estratificación - Etapa 1)
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
-| **3.1 Dashboard de Evaluador CEISH** | ⏳ Pendiente | Listado de investigaciones asignadas para estratificación (Revisión Ciega). |
-| **3.2 Panel de Estratificación (Anexo 27)** | ⏳ Pendiente | Formulario del Anexo 27 interactivo al lado derecho del visor PDF. |
-| **3.3 Resolución de Estratificación (Anexo 11 / 23)** | ⏳ Pendiente | Emisión del Anexo 11 (carta de exención) o Anexo 23 (darse de baja por conflicto). |
+| **3.1 Dashboard de Evaluador CEISH** | ✅ Completado | Listado en [EvaluatorDashboard.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/EvaluatorDashboard.tsx) con filtro de asignaciones activas de revisor, sin mostrar nombres de autores (revisión ciega). |
+| **3.2 Panel de Estratificación (Anexo 27)** | ✅ Completado | Formulario del Anexo 27 interactivo y split-screen en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx). Soporta exención, reclasificación de riesgo, devolución de trámite (correcciones) e inhibición. |
+| **3.3 Resolución de Estratificación (Anexo 11 / 23)** | ✅ Completado | Acciones para emitir Anexo 11 (exención ética), Anexo 23 (conflicto de interés con reasignación ciega), Anexo 12 (evaluación técnica), Anexo 13 (aprobación) y Anexo 26 (anulación). |
 
 ---
 
@@ -46,6 +46,10 @@ Construir un prototipo funcional interactivo para la rama de investigaciones **"
   * **Tarea 1.3 completada:** Labels visuales actualizados en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) para mapear dinámicamente los roles ('Estudiante' -> 'Investigador', 'Evaluador' -> 'Revisor') y los ítems de navegación en el sidebar.
   * **Tarea 2.1 y 2.2 completadas:** Rediseño completo de la interfaz del Investigador en [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) para listar proyectos, ver su línea de tiempo, resoluciones emitidas y simular la subida segura de PDFs en cache de sesión ([fileCache.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/fileCache.ts)). Creación del formulario de registro interactivo en [CrearInvestigacionModal.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/CrearInvestigacionModal.tsx).
   * **Botón de Reset del Prototipo:** Añadido botón físico de reinicio del estado del prototipo (icono de recarga amarillo) en la barra de usuario en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx).
+  * **Deprecación de Componentes Originales:** Se marcaron los componentes [SubmissionCard.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/SubmissionCard.tsx) y [UploadModal.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/components/UploadModal.tsx) como obsoletos (con comentario `// [DEPRECATED]`), ya que la nueva lógica de CEISH los reemplaza por completo.
+  * **Tarea 3.1, 3.2 y 3.3 completadas:** Implementación de la interfaz del Revisor CEISH. Modificadas las rutas en [index.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/app/router/index.tsx) y rediseñado [EvaluatorDashboard.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/EvaluatorDashboard.tsx) para integrar la revisión ciega de asignaciones activas. Creación de la vista split-screen [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) para realizar la estratificación (Anexo 27/11) con opción de devolución (correcciones) o reclasificación (fuera de alcance declarativa), así como la finalización técnica (Anexos 12/13/26).
+
+
 
 
 

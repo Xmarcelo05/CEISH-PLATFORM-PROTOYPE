@@ -1,3 +1,4 @@
+// [DEPRECATED - sin uso desde Fase 2 CEISH] Se conserva como referencia de estilos, no se importa en ningún lado.
 import type { StudentSubmission } from '../../../shared/types/platform.types';
 
 interface Props {

@@ -190,10 +190,11 @@ interface CeishState {
   guardarBorradorAnexo: (emision: Omit<EmisionAnexo, 'id' | 'emitidoAt'>) => void;
   
   emitirAnexo: (
-    emision: Omit<EmisionAnexo, 'id' | 'emitidoAt'>,
+    emision: Omit<EmisionAnexo, 'id' | 'emitidoAt' | 'resultado'>,
     resultado: EmisionAnexo['resultado'],
     nuevoEstado: InvestigacionEstado,
-    cambioComentario?: string
+    cambioComentario?: string,
+    nuevoRiesgoConfirmado?: RiesgoTipo
   ) => void;
   
   darseDeBajaRevisor: (
@@ -354,7 +355,7 @@ export const useCeishStore = create<CeishState>()(
         };
       }),
 
-      emitirAnexo: (emision, resultado, nuevoEstado, cambioComentario) => set((state) => {
+      emitirAnexo: (emision, resultado, nuevoEstado, cambioComentario, nuevoRiesgoConfirmado) => set((state) => {
         const timestamp = new Date().toISOString();
         const emisionId = generateUUID();
 
@@ -384,7 +385,7 @@ export const useCeishStore = create<CeishState>()(
         const invActualizada: Investigacion = {
           ...inv,
           estado: nuevoEstado,
-          riesgoConfirmado: emision.anexoId === 'anexo-27' && resultado === 'coincide' ? inv.riesgoDeclarado : inv.riesgoConfirmado,
+          riesgoConfirmado: nuevoRiesgoConfirmado ? nuevoRiesgoConfirmado : (emision.anexoId === 'anexo-27' && resultado === 'coincide' ? inv.riesgoDeclarado : inv.riesgoConfirmado),
           cronometro: cronometroActualizado,
           historialEstados: [
             ...inv.historialEstados,
