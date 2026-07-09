@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import './LoginForm.css';
 
-import { colors, typography, spacing } from '../../shared/components/common/colors';
+import { colors, typography } from '../../shared/components/common/colors';
 import type { LoginResult } from '../../services/authService';
 import Input from '../../shared/components/common/Input';
 import Button from '../../shared/components/common/Button';
