@@ -230,6 +230,12 @@ interface CeishState {
     customVersionId?: string
   ) => void;
 
+  editarDocumento: (
+    id: string,
+    campos: Partial<Pick<Documento, 'tema' | 'descripcion' | 'riesgoDeclarado' | 'riesgoConfirmado' | 'estado'>>,
+    nuevoEvaluadorId?: string
+  ) => void;
+
   solicitarRevision: (documentoId: string, solicitanteNombre: string) => void;
 
   guardarRespuestaAnexo: (
@@ -515,6 +521,82 @@ export const useCeishStore = create<CeishState>()(
 
         return {
           documentos: [...state.documentos, nuevoDoc],
+          asignaciones: asignacionesActualizadas
+        };
+      }),
+
+      editarDocumento: (id, campos, nuevoEvaluadorId) => set((state) => {
+        const docIdx = state.documentos.findIndex(d => d.id === id);
+        if (docIdx === -1) return {};
+
+        const doc = state.documentos[docIdx];
+        const timestamp = new Date().toISOString();
+        const estadoCambiado = campos.estado && campos.estado !== doc.estado;
+
+        const docActualizado: Documento = {
+          ...doc,
+          ...campos,
+          historialEstados: estadoCambiado ? [
+            ...doc.historialEstados,
+            {
+              estado: campos.estado!,
+              changedAt: timestamp,
+              changedBy: 'Administrador',
+              comment: `Estado modificado manualmente por el Administrador a: ${campos.estado}.`
+            }
+          ] : doc.historialEstados
+        };
+
+        const nuevosDocs = [...state.documentos];
+        nuevosDocs[docIdx] = docActualizado;
+
+        let asignacionesActualizadas = [...state.asignaciones];
+
+        if (nuevoEvaluadorId) {
+          // Deactivar asignaciones activas previas
+          asignacionesActualizadas = asignacionesActualizadas.map(asig => {
+            if (asig.documentoId === id && asig.active) {
+              return {
+                ...asig,
+                active: false,
+                bajaMotivo: 'Reasignado por el Administrador.'
+              };
+            }
+            return asig;
+          });
+
+          // Determinar la sección correcta según el estado (actualizado)
+          const estadoActual = campos.estado || doc.estado;
+          let seccionId = 'sec-estratificacion'; // por defecto para 'estratificacion' o 'creada'
+          if (estadoActual === 'revision-tecnica') {
+            seccionId = 'sec-evaluacion';
+          }
+
+          const nuevaAsignacion: AsignacionCEISH = {
+            id: generateUUID(),
+            documentoId: id,
+            evaluadorId: nuevoEvaluadorId,
+            seccionId: seccionId,
+            assignedAt: timestamp,
+            active: true
+          };
+
+          asignacionesActualizadas.push(nuevaAsignacion);
+
+          // Si el documento estaba en 'creada', al asignar revisor pasa a 'estratificacion'
+          if (docActualizado.estado === 'creada') {
+            docActualizado.estado = 'estratificacion';
+            docActualizado.historialEstados.push({
+              estado: 'estratificacion',
+              changedAt: timestamp,
+              changedBy: 'Administrador',
+              comment: 'Asignación manual de revisor. Proyecto pasa a etapa de Estratificación.'
+            });
+          }
+        }
+
+        return {
+          documentos: nuevosDocs,
           asignaciones: asignacionesActualizadas
         };
       }),
