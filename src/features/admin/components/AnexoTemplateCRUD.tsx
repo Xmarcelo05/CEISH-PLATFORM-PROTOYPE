@@ -43,7 +43,7 @@ export function AnexoTemplateCRUD() {
       ...preguntas,
       {
         texto: '',
-        tipo: 'cumple-nocumple', // Por defecto
+        tipo: 'checklist', // Por defecto
         descripcionContexto: '',
         orden: preguntas.length + 1
       }
@@ -253,10 +253,9 @@ export function AnexoTemplateCRUD() {
                             value={pregunta.tipo}
                             onChange={(e) => handlePreguntaChange(idx, 'tipo', e.target.value as CampoTipo)}
                           >
-                            <option value="cumple-nocumple">Cumple / No Cumple (Si/No)</option>
-                            <option value="texto-libre">Respuesta Abierta (Texto)</option>
-                            <option value="si-no">Sí / No</option>
                             <option value="checklist">Checklist</option>
+                            <option value="texto-libre">Respuesta Abierta (Texto)</option>
+                            <option value="archivo">Adjuntar Archivo (Imagen o PDF)</option>
                           </select>
                         </div>
 

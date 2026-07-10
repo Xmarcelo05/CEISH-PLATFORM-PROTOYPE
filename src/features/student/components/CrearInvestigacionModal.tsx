@@ -459,27 +459,31 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                                       style={{ fontSize: '12.5px' }}
                                       required
                                     />
-                                  ) : p.tipo === 'si-no' || p.tipo === 'cumple-nocumple' ? (
-                                    <div style={{ display: 'flex', gap: '16px' }}>
-                                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '12.5px' }}>
-                                        <input
-                                          type="radio"
-                                          name={`preg-${template.id}-${p.id}`}
-                                          checked={currentVal === true}
-                                          onChange={() => handlePreguntaChange(template.id, p.id, true)}
-                                          required
-                                        />
-                                        <span>Sí</span>
-                                      </label>
-                                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '12.5px' }}>
-                                        <input
-                                          type="radio"
-                                          name={`preg-${template.id}-${p.id}`}
-                                          checked={currentVal === false}
-                                          onChange={() => handlePreguntaChange(template.id, p.id, false)}
-                                        />
-                                        <span>No</span>
-                                      </label>
+                                  ) : p.tipo === 'archivo' ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      <input
+                                        type="file"
+                                        accept=".pdf,application/pdf,image/*"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0] || null;
+                                          if (!f) return;
+                                          const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+                                          const isImage = f.type.startsWith('image/');
+                                          if (!isPdf && !isImage) {
+                                            window.alert('Solo se permiten archivos en formato PDF o imagen.');
+                                            return;
+                                          }
+                                          const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                                          ceishFileCache[fileKey] = f;
+                                          handlePreguntaChange(template.id, p.id, { documentName: f.name, documentPath: fileKey });
+                                        }}
+                                        style={{ fontSize: '12px' }}
+                                      />
+                                      {currentVal?.documentName && (
+                                        <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                                          ✓ Archivo adjunto: {currentVal.documentName}
+                                        </span>
+                                      )}
                                     </div>
                                   ) : (
                                     <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>

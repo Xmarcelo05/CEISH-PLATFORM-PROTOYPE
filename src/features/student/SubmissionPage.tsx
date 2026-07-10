@@ -53,7 +53,7 @@ export function SubmissionPage() {
         // Inicializar campos vacíos según la plantilla
         const template = anexosTemplates.find(t => t.id === activeAnexoId);
         template?.preguntas.forEach(p => {
-          iniciales[p.id] = p.tipo === 'cumple-nocumple' || p.tipo === 'si-no' || p.tipo === 'checklist' ? false : '';
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
         });
       }
       setRespuestasForm(iniciales);
@@ -553,27 +553,31 @@ export function SubmissionPage() {
                                 style={{ fontSize: '12px', background: 'white' }}
                                 required
                               />
-                            ) : p.tipo === 'si-no' || p.tipo === 'cumple-nocumple' ? (
-                              <div style={{ display: 'flex', gap: '16px', marginTop: '2px' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                                  <input
-                                    type="radio"
-                                    name={`preg-${p.id}`}
-                                    checked={respuestasForm[p.id] === true}
-                                    onChange={() => setRespuestasForm({ ...respuestasForm, [p.id]: true })}
-                                    required
-                                  />
-                                  <span>Sí</span>
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                                  <input
-                                    type="radio"
-                                    name={`preg-${p.id}`}
-                                    checked={respuestasForm[p.id] === false}
-                                    onChange={() => setRespuestasForm({ ...respuestasForm, [p.id]: false })}
-                                  />
-                                  <span>No</span>
-                                </label>
+                            ) : p.tipo === 'archivo' ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                                <input
+                                  type="file"
+                                  accept=".pdf,application/pdf,image/*"
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0] || null;
+                                    if (!f) return;
+                                    const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+                                    const isImage = f.type.startsWith('image/');
+                                    if (!isPdf && !isImage) {
+                                      window.alert('Solo se permiten archivos en formato PDF o imagen.');
+                                      return;
+                                    }
+                                    const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                                    ceishFileCache[fileKey] = f;
+                                    setRespuestasForm({ ...respuestasForm, [p.id]: { documentName: f.name, documentPath: fileKey } });
+                                  }}
+                                  style={{ fontSize: '12px' }}
+                                />
+                                {respuestasForm[p.id]?.documentName && (
+                                  <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                                    ✓ Archivo adjunto: {respuestasForm[p.id].documentName}
+                                  </span>
+                                )}
                               </div>
                             ) : (
                               <label className="checkbox-label" style={{ marginTop: '2px' }}>
@@ -688,6 +692,21 @@ export function SubmissionPage() {
                                   <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b', fontStyle: 'italic' }}>
                                     "{val.valor}"
                                   </p>
+                                </div>
+                              );
+                            }
+                            if (pregunta && pregunta.tipo === 'archivo' && val.valor?.documentName) {
+                              return (
+                                <div key={val.campoId} style={{ marginTop: '6px', borderTop: '1px dashed #e2e8f0', paddingTop: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                  <p style={{ margin: 0, fontSize: '11px', color: '#475569' }}>📎 {val.valor.documentName}</p>
+                                  <button
+                                    type="button"
+                                    className="eval-btn eval-btn--outline"
+                                    style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                                    onClick={() => handleVerArchivo(val.valor.documentPath, val.valor.documentName)}
+                                  >
+                                    Ver
+                                  </button>
                                 </div>
                               );
                             }

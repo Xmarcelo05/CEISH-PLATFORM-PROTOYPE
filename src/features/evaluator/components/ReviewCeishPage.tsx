@@ -127,7 +127,7 @@ export function ReviewCeishPage() {
       } else {
         const template = anexosTemplates.find(t => t.id === activeAnexoId);
         template?.preguntas.forEach(p => {
-          iniciales[p.id] = p.tipo === 'cumple-nocumple' || p.tipo === 'si-no' || p.tipo === 'checklist' ? false : '';
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
         });
       }
       setRespuestasForm(iniciales);
@@ -601,12 +601,44 @@ export function ReviewCeishPage() {
                           const pregunta = resp.snapshotPreguntas.find(p => p.id === val.campoId);
                           if (!pregunta) return null;
 
+                          if (pregunta.tipo === 'archivo') {
+                            return (
+                              <div key={val.campoId} style={{ fontSize: '12px' }}>
+                                <p style={{ margin: 0, fontWeight: 600, color: '#475569' }}>{pregunta.texto}</p>
+                                {val.valor?.documentName ? (
+                                  <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1' }}>
+                                    <span>📎 {val.valor.documentName}</span>
+                                    <button
+                                      type="button"
+                                      className="eval-btn eval-btn--outline"
+                                      style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                                      onClick={() => {
+                                        const fileObj = ceishFileCache[val.valor.documentPath];
+                                        if (fileObj) {
+                                          window.open(URL.createObjectURL(fileObj), '_blank', 'noopener,noreferrer');
+                                        } else {
+                                          window.alert('Archivo no disponible tras recargar la sesión.');
+                                        }
+                                      }}
+                                    >
+                                      Ver
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <p style={{ margin: '2px 0 0 0', color: '#94a3b8', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1' }}>
+                                    <em>Sin archivo adjunto</em>
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
+
                           return (
                             <div key={val.campoId} style={{ fontSize: '12px' }}>
                               <p style={{ margin: 0, fontWeight: 600, color: '#475569' }}>{pregunta.texto}</p>
                               <p style={{ margin: '2px 0 0 0', color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', whiteSpace: 'pre-wrap' }}>
-                                {typeof val.valor === 'boolean' 
-                                  ? (val.valor ? 'Sí' : 'No') 
+                                {typeof val.valor === 'boolean'
+                                  ? (val.valor ? 'Sí' : 'No')
                                   : (val.valor ? String(val.valor) : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>)
                                 }
                               </p>
@@ -673,26 +705,31 @@ export function ReviewCeishPage() {
                               placeholder="Escriba su criterio u observaciones..."
                               style={{ fontSize: '12px', marginTop: '6px' }}
                             />
-                          ) : p.tipo === 'si-no' || p.tipo === 'cumple-nocumple' ? (
-                            <div style={{ display: 'flex', gap: '16px', marginTop: '6px' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px' }}>
-                                <input
-                                  type="radio"
-                                  name={`preg-${p.id}`}
-                                  checked={respuestasForm[p.id] === true}
-                                  onChange={() => handlePreguntaChange(p.id, true)}
-                                />
-                                <span>Sí / Cumple</span>
-                              </label>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12.5px' }}>
-                                <input
-                                  type="radio"
-                                  name={`preg-${p.id}`}
-                                  checked={respuestasForm[p.id] === false}
-                                  onChange={() => handlePreguntaChange(p.id, false)}
-                                />
-                                <span>No / No Cumple</span>
-                              </label>
+                          ) : p.tipo === 'archivo' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                              <input
+                                type="file"
+                                accept=".pdf,application/pdf,image/*"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0] || null;
+                                  if (!f) return;
+                                  const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+                                  const isImage = f.type.startsWith('image/');
+                                  if (!isPdf && !isImage) {
+                                    window.alert('Solo se permiten archivos en formato PDF o imagen.');
+                                    return;
+                                  }
+                                  const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                                  ceishFileCache[fileKey] = f;
+                                  handlePreguntaChange(p.id, { documentName: f.name, documentPath: fileKey });
+                                }}
+                                style={{ fontSize: '12px' }}
+                              />
+                              {respuestasForm[p.id]?.documentName && (
+                                <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                                  ✓ Archivo adjunto: {respuestasForm[p.id].documentName}
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <label className="checkbox-label" style={{ marginTop: '6px' }}>

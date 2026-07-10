@@ -91,7 +91,7 @@ export interface Autor {
 }
 
 // ─── Motor Configurable: Preguntas y Plantillas de Anexos ───────────────────
-export type CampoTipo = 'checklist' | 'cumple-nocumple' | 'comentarios-solo' | 'texto-libre' | 'si-no';
+export type CampoTipo = 'checklist' | 'texto-libre' | 'archivo';
 
 export interface Pregunta {
   id: string;
@@ -149,7 +149,7 @@ export interface Documento {
 // ─── Respuestas a Anexos (Emisiones Llenadas con Snapshot) ───────────────────
 export interface ValorCampo {
   campoId: string;
-  valor: any; // boolean para checklist/cumple/si-no, string para texto
+  valor: any; // boolean para checklist, string para texto-libre, { documentName, documentPath } para archivo
   observacion?: string;
 }
 
