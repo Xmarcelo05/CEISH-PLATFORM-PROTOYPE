@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
@@ -77,23 +78,59 @@ const ADMIN_NAV: NavItem[] = [
       </svg>
     ),
   },
+  {
+    to: '/admin/notificaciones',
+    label: 'Notificaciones',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M14 6a5 5 0 00-10 0c0 5.5-2.5 7-2.5 7h15S14 11.5 14 6z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M10.7 16.5a1.6 1.6 0 01-2.75 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+  },
 ];
 
 const ROLE_LABEL = { student: 'Investigador', evaluator: 'Revisor', admin: 'Administrador' };
 
+function formatNotifDate(iso: string): string {
+  return new Date(iso).toLocaleString('es-EC', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
 export function AppShell() {
   const { currentUser, logout } = useAuthStore();
+  const { notificaciones, marcarNotificacionLeida } = useCeishStore();
   const navigate = useNavigate();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
+  const notifBellRef = useRef<HTMLButtonElement>(null);
+
+  const toggleNotifications = () => {
+    if (!showNotifications && notifBellRef.current) {
+      const rect = notifBellRef.current.getBoundingClientRect();
+      setNotifPanelPos({ top: rect.bottom + 8, left: rect.left });
+    }
+    setShowNotifications((v) => !v);
+  };
 
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
   };
 
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/login', { replace: true });
+    }
+  }, [currentUser, navigate]);
+
   if (!currentUser) {
-    navigate('/login', { replace: true });
     return null;
   }
+
+  const misNotificaciones = notificaciones
+    .filter(n => n.destinatarioId === currentUser.id)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const noLeidas = misNotificaciones.filter(n => !n.leida).length;
 
   // Permisos y navegación acumulativa por roles (Investigador < Revisor < Administrador)
   let navItems: NavItem[] = [];
@@ -114,6 +151,51 @@ export function AppShell() {
             <path d="M6 8h12M6 12h12M6 16h7" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
           </svg>
           <span className="shell__brand-name">CEISH</span>
+
+          <div className="shell__notif">
+            <button
+              ref={notifBellRef}
+              className="shell__notif-bell"
+              onClick={toggleNotifications}
+              title="Notificaciones"
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              {noLeidas > 0 && <span className="shell__notif-badge">{noLeidas > 9 ? '9+' : noLeidas}</span>}
+            </button>
+
+            {showNotifications && (
+              <>
+                <div className="shell__notif-backdrop" onClick={() => setShowNotifications(false)} />
+                <div
+                  className="shell__notif-panel"
+                  style={{ top: notifPanelPos.top, left: notifPanelPos.left }}
+                >
+                  <div className="shell__notif-panel-header">Notificaciones</div>
+                  {misNotificaciones.length === 0 ? (
+                    <p className="shell__notif-empty">No tienes notificaciones.</p>
+                  ) : (
+                    <ul className="shell__notif-list">
+                      {misNotificaciones.map(n => (
+                        <li
+                          key={n.id}
+                          className={cn('shell__notif-item', !n.leida && 'shell__notif-item--unread')}
+                          onClick={() => marcarNotificacionLeida(n.id)}
+                        >
+                          <p className="shell__notif-msg">{n.mensaje}</p>
+                          <span className="shell__notif-meta">
+                            {n.tipo === 'manual' ? 'Mensaje del admin' : 'Automática'} · {formatNotifDate(n.createdAt)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <nav className="shell__nav">

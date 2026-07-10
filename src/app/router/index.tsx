@@ -11,6 +11,7 @@ import { AssignmentPanel } from '../../features/admin/components/AssignmentPanel
 import { ReviewCeishPage } from '../../features/evaluator/components/ReviewCeishPage';
 import { AnexoTemplateCRUD } from '../../features/admin/components/AnexoTemplateCRUD';
 import { TipoDocumentoCRUD } from '../../features/admin/components/TipoDocumentoCRUD';
+import { NotificacionesAdminCRUD } from '../../features/admin/components/NotificacionesAdminCRUD';
 
 function RootRedirect() {
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -41,6 +42,7 @@ export function AppRouter() {
           <Route path="/admin/asignaciones" element={<AssignmentPanel />} />
           <Route path="/admin/anexos" element={<AnexoTemplateCRUD />} />
           <Route path="/admin/tipos-documento" element={<TipoDocumentoCRUD />} />
+          <Route path="/admin/notificaciones" element={<NotificacionesAdminCRUD />} />
         </Route>
 
         {/* Root redirect */}

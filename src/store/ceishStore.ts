@@ -32,6 +32,28 @@ const generateUUID = (): string => {
 };
 
 // ============================================================================
+// NOTIFICACIONES: DESTINATARIOS FIJOS Y HELPER DE FAN-OUT
+// ============================================================================
+// IDs simulados de administradores (mismo esquema de IDs deterministas usado
+// en database/seed.sql y replicado en USUARIOS_REGISTRADOS de CrearInvestigacionModal.tsx)
+const ADMIN_IDS = ['a0000000-0000-0000-0000-000000000001'];
+
+const buildNotificaciones = (
+  destinatarios: (string | undefined)[],
+  mensaje: string,
+  timestamp: string,
+  tipo: Notificacion['tipo'] = 'automatica'
+): Notificacion[] =>
+  Array.from(new Set(destinatarios.filter((d): d is string => Boolean(d)))).map((destinatarioId) => ({
+    id: generateUUID(),
+    tipo,
+    destinatarioId,
+    mensaje,
+    leida: false,
+    createdAt: timestamp
+  }));
+
+// ============================================================================
 // SEED DATA: DOCUMENTOS Y ASIGNACIONES
 // ============================================================================
 const seedDocumentos = (): Documento[] => [
@@ -265,6 +287,7 @@ interface CeishState {
   ) => void;
 
   crearNotificacion: (destinatarioId: string, mensaje: string, tipo?: Notificacion['tipo']) => void;
+  enviarNotificacionManual: (destinatarioIds: string[], mensaje: string) => void;
   marcarNotificacionLeida: (id: string) => void;
 
   crearEscalamiento: (
@@ -319,13 +342,10 @@ export const useCeishStore = create<CeishState>()(
         // Reglas de Congelamiento v3 (Sección 7):
         // Identificar documentos activos (excluyendo cerrados: aprobada o anulada)
         const docsActivos = state.documentos.filter(d => d.estado !== 'aprobada' && d.estado !== 'anulada');
-        const docsActivosIds = docsActivos.map(d => d.id);
+        const docsActivosIds = new Set(docsActivos.map(d => d.id));
 
-        let nuevasRespuestas = [...state.respuestasAnexos];
-        let nuevasNotificaciones = [...state.notificaciones];
-
-        nuevasRespuestas = nuevasRespuestas.map(resp => {
-          if (resp.anexoTemplateId === id && docsActivosIds.includes(resp.documentoId)) {
+        const nuevasRespuestas = state.respuestasAnexos.map(resp => {
+          if (resp.anexoTemplateId === id && docsActivosIds.has(resp.documentoId)) {
             // Filtrar respuestas a preguntas que fueron eliminadas o modificadas
             const valoresFiltrados = resp.valores.filter(val => {
               const nuevaPreg = nuevasPreguntas.find(p => p.id === val.campoId);
@@ -335,19 +355,6 @@ export const useCeishStore = create<CeishState>()(
               return true;
             });
 
-            const huboCambios = valoresFiltrados.length !== resp.valores.length;
-            if (huboCambios) {
-              const doc = docsActivos.find(d => d.id === resp.documentoId);
-              nuevasNotificaciones.push({
-                id: generateUUID(),
-                tipo: 'automatica',
-                destinatarioId: resp.emitidoPorId,
-                mensaje: `El Administrador modificó preguntas del Anexo ${numero} (${nombre}) en el proyecto ${doc?.codigo}. Las respuestas afectadas han sido liquidadas del registro para auditoría.`,
-                leida: false,
-                createdAt: new Date().toISOString()
-              });
-            }
-
             return {
               ...resp,
               valores: valoresFiltrados
@@ -356,16 +363,49 @@ export const useCeishStore = create<CeishState>()(
           return resp;
         });
 
+        // Notificación (5a): cualquier cambio estructural en las preguntas (añadida,
+        // eliminada o editada) avisa a investigador + evaluadores activos de TODOS los
+        // documentos activos que usan esta plantilla, no solo a quien ya la había respondido.
+        const huboCambioEstructural =
+          oldTemplate.preguntas.length !== nuevasPreguntas.length ||
+          oldTemplate.preguntas.some(op => {
+            const np = nuevasPreguntas.find(p => p.id === op.id);
+            return !np || np.texto !== op.texto || np.tipo !== op.tipo;
+          });
+
+        const timestamp = new Date().toISOString();
+        let nuevasNotificaciones: Notificacion[] = [];
+
+        if (huboCambioEstructural) {
+          const docsConEsteAnexo = docsActivos.filter(d =>
+            state.tiposDocumento
+              .find(t => t.id === d.tipoDocumentoId)
+              ?.secciones.some(s => s.anexos.some(a => a.anexoTemplateId === id))
+          );
+
+          nuevasNotificaciones = docsConEsteAnexo.flatMap(d => {
+            const evaluadoresActivos = state.asignaciones
+              .filter(a => a.documentoId === d.id && a.active)
+              .map(a => a.evaluadorId);
+            return buildNotificaciones(
+              [d.investigadorId, ...evaluadoresActivos],
+              `El Administrador modificó las preguntas del Anexo ${numero} (${nombre}) en el proyecto ${d.codigo}. Revisa si tus respuestas siguen vigentes.`,
+              timestamp
+            );
+          });
+        }
+
         return {
           anexosTemplates: nuevosTemplates,
           respuestasAnexos: nuevasRespuestas,
-          notificaciones: nuevasNotificaciones
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
       eliminarAnexoTemplate: (id) => set((state) => {
+        const template = state.anexosTemplates.find(t => t.id === id);
         const nuevosTemplates = state.anexosTemplates.filter(t => t.id !== id);
-        
+
         // Remover de secciones de TipoDocumento
         const nuevosTipos = state.tiposDocumento.map(tipo => ({
           ...tipo,
@@ -376,18 +416,38 @@ export const useCeishStore = create<CeishState>()(
         }));
 
         // Limpiar respuestas asociadas en documentos en proceso
-        const docsActivosIds = state.documentos
-          .filter(d => d.estado !== 'aprobada' && d.estado !== 'anulada')
-          .map(d => d.id);
+        const docsActivos = state.documentos.filter(d => d.estado !== 'aprobada' && d.estado !== 'anulada');
+        const docsActivosIds = new Set(docsActivos.map(d => d.id));
 
         const nuevasRespuestas = state.respuestasAnexos.filter(
-          resp => !(resp.anexoTemplateId === id && docsActivosIds.includes(resp.documentoId))
+          resp => !(resp.anexoTemplateId === id && docsActivosIds.has(resp.documentoId))
         );
+
+        // Notificación (5a): avisar a investigador + evaluadores activos de los
+        // documentos activos que usaban esta plantilla antes de eliminarla.
+        const timestamp = new Date().toISOString();
+        const docsConEsteAnexo = docsActivos.filter(d =>
+          state.tiposDocumento
+            .find(t => t.id === d.tipoDocumentoId)
+            ?.secciones.some(s => s.anexos.some(a => a.anexoTemplateId === id))
+        );
+
+        const nuevasNotificaciones = docsConEsteAnexo.flatMap(d => {
+          const evaluadoresActivos = state.asignaciones
+            .filter(a => a.documentoId === d.id && a.active)
+            .map(a => a.evaluadorId);
+          return buildNotificaciones(
+            [d.investigadorId, ...evaluadoresActivos],
+            `El Administrador eliminó el Anexo ${template?.numero ?? ''} (${template?.nombre ?? ''}) del flujo del proyecto ${d.codigo}.`,
+            timestamp
+          );
+        });
 
         return {
           anexosTemplates: nuevosTemplates,
           tiposDocumento: nuevosTipos,
-          respuestasAnexos: nuevasRespuestas
+          respuestasAnexos: nuevasRespuestas,
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -479,6 +539,7 @@ export const useCeishStore = create<CeishState>()(
             comment: 'Trámite registrado e iniciado.'
           }
         ];
+        let nuevasNotificaciones: Notificacion[] = [];
 
         if (seccionAsignada && evaluadoresDisponibles.length > 0) {
           const randomIdx = Math.floor(Math.random() * evaluadoresDisponibles.length);
@@ -501,6 +562,16 @@ export const useCeishStore = create<CeishState>()(
             changedBy: 'Sistema CEISH',
             comment: 'Asignación ciega automatizada tras completar Etapa 1.'
           });
+
+          nuevasNotificaciones = buildNotificaciones(
+            [investigadorId],
+            `Tu proyecto ${codigo} avanzó a la etapa de Estratificación.`,
+            timestamp
+          ).concat(buildNotificaciones(
+            [evaluadorSeleccionado.id],
+            `Se te ha asignado el proyecto ${codigo} para evaluación.`,
+            timestamp
+          ));
         }
 
         const nuevoDoc: Documento = {
@@ -521,7 +592,8 @@ export const useCeishStore = create<CeishState>()(
 
         return {
           documentos: [...state.documentos, nuevoDoc],
-          asignaciones: asignacionesActualizadas
+          asignaciones: asignacionesActualizadas,
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -551,6 +623,22 @@ export const useCeishStore = create<CeishState>()(
         nuevosDocs[docIdx] = docActualizado;
 
         let asignacionesActualizadas = [...state.asignaciones];
+        let nuevasNotificaciones: Notificacion[] = [];
+
+        const evaluadoresActivosPrevios = state.asignaciones
+          .filter(a => a.documentoId === id && a.active)
+          .map(a => a.evaluadorId);
+
+        // Notificación (5b): cualquier edición directa del documento por el admin
+        // (tema, descripción, riesgo o estado) avisa a investigador + evaluador(es) activos.
+        const huboCambioDeContenido = Object.keys(campos).length > 0;
+        if (huboCambioDeContenido) {
+          nuevasNotificaciones.push(...buildNotificaciones(
+            [doc.investigadorId, ...evaluadoresActivosPrevios],
+            `El Administrador modificó el proyecto ${doc.codigo}.`,
+            timestamp
+          ));
+        }
 
         if (nuevoEvaluadorId) {
           // Deactivar asignaciones activas previas
@@ -593,11 +681,18 @@ export const useCeishStore = create<CeishState>()(
               comment: 'Asignación manual de revisor. Proyecto pasa a etapa de Estratificación.'
             });
           }
+
+          nuevasNotificaciones.push(...buildNotificaciones(
+            [nuevoEvaluadorId],
+            `Se te ha asignado el proyecto ${doc.codigo} para evaluación.`,
+            timestamp
+          ));
         }
 
         return {
           documentos: nuevosDocs,
-          asignaciones: asignacionesActualizadas
+          asignaciones: asignacionesActualizadas,
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -669,9 +764,20 @@ export const useCeishStore = create<CeishState>()(
         const nuevosDocs = [...state.documentos];
         nuevosDocs[docIdx] = docActualizado;
 
+        const nuevasNotificaciones = buildNotificaciones(
+          [doc.investigadorId],
+          `Tu proyecto ${doc.codigo} avanzó a la etapa de Estratificación.`,
+          timestamp
+        ).concat(buildNotificaciones(
+          [evaluadorSeleccionado.id],
+          `Se te ha asignado el proyecto ${doc.codigo} para evaluación.`,
+          timestamp
+        ));
+
         return {
           documentos: nuevosDocs,
-          asignaciones: [...state.asignaciones, nuevaAsignacion]
+          asignaciones: [...state.asignaciones, nuevaAsignacion],
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -769,10 +875,52 @@ export const useCeishStore = create<CeishState>()(
           );
         }
 
+        // 4. Notificaciones automáticas al investigador según la transición de estado
+        const estadoAnterior = doc.estado;
+        let nuevasNotificaciones: Notificacion[] = [];
+
+        if (nuevoEstado === 'aprobada' && estadoAnterior !== 'aprobada') {
+          nuevasNotificaciones.push(...buildNotificaciones(
+            [doc.investigadorId],
+            `Tu proyecto ${doc.codigo} ha sido aprobado ética y metodológicamente.`,
+            timestamp
+          ));
+        }
+
+        if (resultado === 'con-observaciones') {
+          nuevasNotificaciones.push(...buildNotificaciones(
+            [doc.investigadorId],
+            `Se registraron observaciones en tu proyecto ${doc.codigo}.` + (cambioComentario ? ` ${cambioComentario}` : ''),
+            timestamp
+          ));
+        }
+
+        if (nuevoEstado === 'creada' && estadoAnterior !== 'creada') {
+          nuevasNotificaciones.push(...buildNotificaciones(
+            [doc.investigadorId],
+            `Tu proyecto ${doc.codigo} fue regresado para corrección.` + (cambioComentario ? ` ${cambioComentario}` : ''),
+            timestamp
+          ));
+        }
+
+        if (
+          nuevoEstado !== estadoAnterior &&
+          nuevoEstado !== 'aprobada' &&
+          nuevoEstado !== 'creada' &&
+          nuevoEstado !== 'anulada'
+        ) {
+          nuevasNotificaciones.push(...buildNotificaciones(
+            [doc.investigadorId],
+            `Tu proyecto ${doc.codigo} avanzó a la etapa: ${nuevoEstado}.`,
+            timestamp
+          ));
+        }
+
         return {
           respuestasAnexos: [...filtradasResp, nuevaResp],
           documentos: nuevosDocs,
-          asignaciones: nuevasAsignaciones
+          asignaciones: nuevasAsignaciones,
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -835,6 +983,11 @@ export const useCeishStore = create<CeishState>()(
 
         let asignacionFinal = nuevasAsignaciones;
         let comentarioHistorial = `El revisor se inhibió del proceso por conflicto de interés (Anexo 23).`;
+        let nuevasNotificaciones = buildNotificaciones(
+          ADMIN_IDS,
+          `El evaluador ${evaluadorNombre} declaró conflicto de interés en el proyecto ${doc.codigo}.`,
+          timestamp
+        );
 
         if (evaluadoresDisponibles.length > 0) {
           const randomIdx = Math.floor(Math.random() * evaluadoresDisponibles.length);
@@ -851,6 +1004,11 @@ export const useCeishStore = create<CeishState>()(
 
           asignacionFinal.push(nuevaAsignacion);
           comentarioHistorial += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name}.`;
+          nuevasNotificaciones = nuevasNotificaciones.concat(buildNotificaciones(
+            [nuevoEvaluador.id],
+            `Se te ha asignado el proyecto ${doc.codigo} para evaluación.`,
+            timestamp
+          ));
         } else {
           comentarioHistorial += ` No existen más revisores disponibles en la plataforma.`;
         }
@@ -876,7 +1034,8 @@ export const useCeishStore = create<CeishState>()(
         return {
           respuestasAnexos: [...state.respuestasAnexos, emisionConflicto],
           asignaciones: asignacionFinal,
-          documentos: nuevosDocs
+          documentos: nuevosDocs,
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -942,27 +1101,47 @@ export const useCeishStore = create<CeishState>()(
         ]
       })),
 
+      enviarNotificacionManual: (destinatarioIds, mensaje) => set((state) => ({
+        notificaciones: [
+          ...state.notificaciones,
+          ...buildNotificaciones(destinatarioIds, mensaje, new Date().toISOString(), 'manual')
+        ]
+      })),
+
       marcarNotificacionLeida: (id) => set((state) => ({
         notificaciones: state.notificaciones.map(n => n.id === id ? { ...n, leida: true } : n)
       })),
 
       // Escalamientos
-      crearEscalamiento: (documentoId, seccionId, anexoTemplateId, comentarioEvaluador, respuestaAnexoId) => set((state) => ({
-        escalamientos: [
-          ...state.escalamientos,
-          {
-            id: generateUUID(),
-            respuestaAnexoId,
-            documentoId,
-            seccionId,
-            anexoTemplateId,
-            comentarioEvaluador,
-            estado: 'pendiente',
-            notificado: false,
-            createdAt: new Date().toISOString()
-          }
-        ]
-      })),
+      crearEscalamiento: (documentoId, seccionId, anexoTemplateId, comentarioEvaluador, respuestaAnexoId) => set((state) => {
+        const timestamp = new Date().toISOString();
+        const doc = state.documentos.find(d => d.id === documentoId);
+
+        return {
+          escalamientos: [
+            ...state.escalamientos,
+            {
+              id: generateUUID(),
+              respuestaAnexoId,
+              documentoId,
+              seccionId,
+              anexoTemplateId,
+              comentarioEvaluador,
+              estado: 'pendiente',
+              notificado: false,
+              createdAt: timestamp
+            }
+          ],
+          notificaciones: [
+            ...state.notificaciones,
+            ...buildNotificaciones(
+              ADMIN_IDS,
+              `Se escaló una situación del proyecto ${doc?.codigo ?? documentoId} que requiere tu resolución.`,
+              timestamp
+            )
+          ]
+        };
+      }),
 
       resolverEscalamiento: (id, edicionAdmin) => set((state) => {
         const idx = state.escalamientos.findIndex(e => e.id === id);

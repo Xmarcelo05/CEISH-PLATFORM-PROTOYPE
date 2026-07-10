@@ -34,6 +34,117 @@
   letter-spacing: 0.05em;
 }
 
+/* ---- Notificaciones (campanita + bandeja) ---- */
+.shell__notif {
+  position: relative;
+  margin-left: auto;
+}
+
+.shell__notif-bell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--c-header-muted);
+  transition: background 0.12s, color 0.12s;
+}
+
+.shell__notif-bell:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--c-header-text);
+}
+
+.shell__notif-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: white;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.shell__notif-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.shell__notif-panel {
+  /* position: fixed (not absolute) so it escapes .shell__sidebar's overflow:hidden
+     clipping — top/left are computed in JS from the bell's position and applied inline. */
+  position: fixed;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--c-surface, #fff);
+  color: var(--c-text, #111);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,0.25));
+  z-index: 41;
+}
+
+.shell__notif-panel-header {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.shell__notif-empty {
+  padding: 16px 14px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.shell__notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shell__notif-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+}
+
+.shell__notif-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.shell__notif-item--unread {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.shell__notif-item--unread .shell__notif-msg {
+  font-weight: 600;
+}
+
+.shell__notif-msg {
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin: 0 0 4px;
+}
+
+.shell__notif-meta {
+  font-size: 10px;
+  color: #6b7280;
+  text-transform: capitalize;
+}
+
 .shell__nav {
   flex: 1;
   display: flex;
