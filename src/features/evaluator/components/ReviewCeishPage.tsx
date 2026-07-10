@@ -5,6 +5,7 @@ import { useCeishStore } from '../../../store/ceishStore';
 import { ceishFileCache } from '../../../store/fileCache';
 import { usePDFViewer } from '../../evaluation/hooks/usePDFViewer';
 import { PDFViewer } from '../../evaluation/components/PDFViewer/PDFViewer';
+import { generateDocx } from '../../../utils/docxGenerator';
 import type { 
   ValorCampo, 
   ComentarioAnotacion,
@@ -48,6 +49,11 @@ export function ReviewCeishPage() {
   // Modales y comentarios de control especial
   const [showConflictoModal, setShowConflictoModal] = useState(false);
   const [conflictoComentario, setConflictoComentario] = useState('');
+  const [conflictoDeclaracion, setConflictoDeclaracion] = useState(false);
+
+  const [showBajaModal, setShowBajaModal] = useState(false);
+  const [bajaMotivo, setBajaMotivo] = useState('');
+  const [bajaDeclaracion, setBajaDeclaracion] = useState(false);
   
   const [showDevolverModal, setShowDevolverModal] = useState(false);
   const [devolucionComentario, setDevolucionComentario] = useState('');
@@ -318,6 +324,158 @@ export function ReviewCeishPage() {
     navigate('/evaluador');
   };
 
+  // ============================================================================
+  // RELLENO DE PLANTILLAS WORD (docxtemplater)
+  // ============================================================================
+  const handleDownloadWordTemplate = (anexoId: string) => {
+    const template = anexosTemplates.find(t => t.id === anexoId);
+    if (!template) return;
+    if (!template.wordTemplateBase64) {
+      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
+      return;
+    }
+
+    const dataToInject: Record<string, any> = {
+      codigo: documento?.codigo || '',
+      tema: documento?.tema || '',
+      nombre_evaluador: currentUser.name,
+      fecha: new Date().toLocaleDateString('es-ES'),
+      resultado: 'Evaluación Técnica Realizada',
+      observaciones: 'Sin observaciones específicas en el acta.',
+    };
+
+    template.preguntas.forEach(p => {
+      const val = respuestasForm[p.id];
+      const tag = p.key || `tag_${p.orden}`;
+      if (p.tipo === 'checklist') {
+        dataToInject[tag] = val ? 'CUMPLE / CONFORME' : 'NO CUMPLE / NO CONFORME';
+      } else if (p.tipo === 'archivo') {
+        dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
+      } else {
+        dataToInject[tag] = val || '';
+        if (tag === 'observaciones') {
+          dataToInject.observaciones = val || '';
+        }
+      }
+    });
+
+    const fileName = `Anexo_${template.numero}_${documento?.codigo || 'CEISH'}`;
+    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+  };
+
+  const handleDownloadConflictoWord = () => {
+    const template = anexosTemplates.find(t => t.id === 'anexo-23');
+    if (!template) return;
+    if (!template.wordTemplateBase64) {
+      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
+      return;
+    }
+
+    const dataToInject = {
+      codigo: documento?.codigo || '',
+      tema: documento?.tema || '',
+      nombre_evaluador: currentUser.name,
+      fecha: new Date().toLocaleDateString('es-ES'),
+      resultado: 'Inhibición por Conflicto',
+      observaciones: conflictoComentario.trim(),
+      declaracion_inhibicion: conflictoDeclaracion ? 'DECLARO CONFLICTO E INHIBICION' : 'NO DECLARADO'
+    };
+
+    const fileName = `Anexo_23_Conflicto_${documento?.codigo || 'CEISH'}`;
+    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+  };
+
+  const handleDownloadBajaWord = () => {
+    const template = anexosTemplates.find(t => t.id === 'anexo-26');
+    if (!template) return;
+    if (!template.wordTemplateBase64) {
+      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
+      return;
+    }
+
+    const dataToInject = {
+      codigo: documento?.codigo || '',
+      tema: documento?.tema || '',
+      nombre_evaluador: currentUser.name,
+      fecha: new Date().toLocaleDateString('es-ES'),
+      resultado: 'Baja Definitiva del Trámite',
+      observaciones: bajaMotivo.trim(),
+      declaracion_suspension: bajaDeclaracion ? 'SUSPENSION CONFIRMADA Y FIRMADA' : 'NO CONFIRMADA'
+    };
+
+    const fileName = `Anexo_26_Baja_${documento?.codigo || 'CEISH'}`;
+    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+  };
+
+  const handleDownloadStudentWordTemplate = (anexoId: string) => {
+    const template = anexosTemplates.find(t => t.id === anexoId);
+    if (!template) return;
+    if (!template.wordTemplateBase64) {
+      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
+      return;
+    }
+
+    const resp = respuestasAnexos.find(
+      r => r.documentoId === documento?.id && r.anexoTemplateId === anexoId && r.versionArchivoId === latestVersion?.id
+    );
+
+    const dataToInject: Record<string, any> = {
+      codigo: documento?.codigo || '',
+      tema: documento?.tema || '',
+      nombre_evaluador: 'Evaluador CEISH',
+      fecha: new Date().toLocaleDateString('es-ES'),
+      resultado: 'Solicitado',
+      observaciones: 'Sin observaciones.',
+    };
+
+    template.preguntas.forEach(p => {
+      const savedVal = resp?.valores.find(v => v.campoId === p.id);
+      const val = savedVal ? savedVal.valor : '';
+      const tag = p.key || `tag_${p.orden}`;
+      
+      if (p.tipo === 'checklist') {
+        dataToInject[tag] = val ? 'CUMPLE / CONFORME' : 'NO CUMPLE / NO CONFORME';
+      } else if (p.tipo === 'archivo') {
+        dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
+      } else {
+        dataToInject[tag] = val || '';
+      }
+    });
+
+    const fileName = `Anexo_${template.numero}_${documento?.codigo || 'CEISH'}`;
+    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+  };
+
+  const handleDarDeBajaConfirm = () => {
+    if (!bajaMotivo.trim()) {
+      return alert('Debe especificar la causa de la baja definitiva.');
+    }
+    const versionId = latestVersion?.id || '';
+
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-26',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: [
+          { campoId: 'a26_c1', valor: bajaMotivo.trim() },
+          { campoId: 'a26_c2', valor: bajaDeclaracion }
+        ],
+        comentariosAnotados: []
+      },
+      'baja',
+      'anulada',
+      `Proyecto dado de baja definitiva del CEISH. Causa: ${bajaMotivo.trim()}`
+    );
+
+    window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
+    setShowBajaModal(false);
+    navigate('/evaluador');
+  };
+
   // ACCIÓN 3: Inhibición por Conflicto (Anexo 23)
   const handleDeclararConflicto = () => {
     if (!conflictoComentario.trim()) {
@@ -472,32 +630,9 @@ export function ReviewCeishPage() {
 
   // ACCIÓN C: Dar de Baja Proyecto (Anexo 26)
   const handleDarDeBaja = () => {
-    const motivo = prompt('Por favor, ingrese la causa técnica de la baja definitiva / revocatoria del protocolo:');
-    if (!motivo) return;
-
-    const versionId = latestVersion?.id || '';
-
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-26',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: [
-          { campoId: 'a26_c1', valor: motivo },
-          { campoId: 'a26_c2', valor: true }
-        ],
-        comentariosAnotados: []
-      },
-      'baja',
-      'anulada',
-      `Proyecto dado de baja definitiva del CEISH. Causa: ${motivo}`
-    );
-
-    window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
-    navigate('/evaluador');
+    setBajaMotivo('');
+    setBajaDeclaracion(false);
+    setShowBajaModal(true);
   };
 
   // Obtener emisiones previas de evaluación metodológica (Anexo 12) para contrastar
@@ -654,10 +789,20 @@ export function ReviewCeishPage() {
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                      <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#1e293b', flex: 1 }}>
                         Anexo {template.numero}: {template.nombre}
                       </h4>
+                      {template.wordTemplateBase64 && (
+                        <button
+                          type="button"
+                          className="eval-btn eval-btn--sm eval-btn--primary"
+                          onClick={() => handleDownloadWordTemplate(template.id)}
+                          style={{ fontSize: '11px', padding: '4px 8px', marginLeft: '10px' }}
+                        >
+                          📥 Descargar Acta Word
+                        </button>
+                      )}
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -911,25 +1056,111 @@ export function ReviewCeishPage() {
         <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowConflictoModal(false); }}>
           <div className="modal" style={{ maxWidth: '450px' }}>
             <div className="modal__header">
-              <h3 className="modal__title">Declaración de Conflicto de Intereses</h3>
+              <h3 className="modal__title">Declaración de Conflicto de Intereses (Anexo 23)</h3>
             </div>
             <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
-                Describa detalladamente el motivo de su conflicto de interés con el proyecto o sus autores (Anexo 23). Su asignación se cancelará ciegamente.
+                Complete el formulario de la plantilla oficial de conflicto de interés para generar el documento y confirmar su inhibición.
               </p>
-              <textarea
-                className="form-input"
-                rows={3}
-                value={conflictoComentario}
-                onChange={(e) => setConflictoComentario(e.target.value)}
-                placeholder="Escriba la causa de inhibición aquí..."
-                required
-              />
+              <div className="form-group">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>
+                  Causa de su conflicto de interés con el proyecto o sus autores:
+                </label>
+                <textarea
+                  className="form-input"
+                  rows={3}
+                  value={conflictoComentario}
+                  onChange={(e) => setConflictoComentario(e.target.value)}
+                  placeholder="Escriba la causa de inhibición aquí..."
+                  required
+                  style={{ fontSize: '12px', marginTop: '4px' }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                  <input
+                    type="checkbox"
+                    checked={conflictoDeclaracion}
+                    onChange={(e) => setConflictoDeclaracion(e.target.checked)}
+                  />
+                  <span>Declaración juramentada de inhibición en el proceso de evaluación</span>
+                </label>
+              </div>
             </div>
             <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="eval-btn eval-btn--outline" onClick={() => setShowConflictoModal(false)}>Cancelar</button>
-              <button className="eval-btn eval-btn--danger" onClick={handleDeclararConflicto} disabled={!conflictoComentario.trim()}>
-                Confirmar Inhibición (A23)
+              <button 
+                type="button"
+                className="eval-btn eval-btn--primary" 
+                onClick={handleDownloadConflictoWord}
+                disabled={!conflictoComentario.trim()}
+              >
+                📥 Descargar A23 Word
+              </button>
+              <button 
+                className="eval-btn eval-btn--danger" 
+                onClick={handleDeclararConflicto} 
+                disabled={!conflictoComentario.trim() || !conflictoDeclaracion}
+              >
+                Confirmar Inhibición
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dar de Baja Proyecto (Anexo 26) */}
+      {showBajaModal && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowBajaModal(false); }}>
+          <div className="modal" style={{ maxWidth: '450px' }}>
+            <div className="modal__header">
+              <h3 className="modal__title">Resolución de Suspensión / Revocatoria (Anexo 26)</h3>
+            </div>
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
+                Complete el formulario de la plantilla oficial de revocatoria para anular definitivamente el expediente del proyecto.
+              </p>
+              <div className="form-group">
+                <label className="form-label" style={{ fontSize: '12px', fontWeight: 600 }}>
+                  Motivos de la suspensión / revocatoria (vencimiento de plazos, faltas éticas, etc.):
+                </label>
+                <textarea
+                  className="form-input"
+                  rows={3}
+                  value={bajaMotivo}
+                  onChange={(e) => setBajaMotivo(e.target.value)}
+                  placeholder="Describa los motivos de baja aquí..."
+                  required
+                  style={{ fontSize: '12px', marginTop: '4px' }}
+                />
+              </div>
+              <div className="form-group">
+                <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                  <input
+                    type="checkbox"
+                    checked={bajaDeclaracion}
+                    onChange={(e) => setBajaDeclaracion(e.target.checked)}
+                  />
+                  <span>Declaración formal de suspensión de la validez del certificado aprobatorio</span>
+                </label>
+              </div>
+            </div>
+            <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className="eval-btn eval-btn--outline" onClick={() => setShowBajaModal(false)}>Cancelar</button>
+              <button 
+                type="button" 
+                className="eval-btn eval-btn--primary"
+                onClick={handleDownloadBajaWord}
+                disabled={!bajaMotivo.trim()}
+              >
+                📥 Descargar A26 Word
+              </button>
+              <button 
+                className="eval-btn eval-btn--danger" 
+                onClick={handleDarDeBajaConfirm} 
+                disabled={!bajaMotivo.trim() || !bajaDeclaracion}
+              >
+                Confirmar Baja (A26)
               </button>
             </div>
           </div>
@@ -1066,75 +1297,87 @@ export function ReviewCeishPage() {
                         Anexo {template.numero}: {template.nombre}
                       </h4>
                       
-                      {/* Botón para habilitar la edición */}
-                      {!isEditingInvestigadorAnexos ? (
-                        <button
-                          type="button"
-                          className="eval-btn eval-btn--outline"
-                          onClick={() => {
-                            // Cargar datos a la edición local por si acaso
-                            const iniciales: Record<string, any> = {};
-                            if (resp) {
-                              resp.valores.forEach(v => {
-                                iniciales[v.campoId] = v.valor;
-                              });
-                            } else {
-                              template.preguntas.forEach(p => {
-                                iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
-                              });
-                            }
-                            setInvestigadorFormState(iniciales);
-                            setIsEditingInvestigadorAnexos(true);
-                          }}
-                          style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px' }}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" />
-                          </svg>
-                          Habilitar Edición
-                        </button>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {template.wordTemplateBase64 && !isEditingInvestigadorAnexos && (
+                          <button
+                            type="button"
+                            className="eval-btn eval-btn--sm eval-btn--primary"
+                            onClick={() => handleDownloadStudentWordTemplate(template.id)}
+                            style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px' }}
+                          >
+                            📥 Descargar Acta Word
+                          </button>
+                        )}
+                        
+                        {!isEditingInvestigadorAnexos ? (
                           <button
                             type="button"
                             className="eval-btn eval-btn--outline"
                             onClick={() => {
-                              setIsEditingInvestigadorAnexos(false);
+                              // Cargar datos a la edición local por si acaso
+                              const iniciales: Record<string, any> = {};
+                              if (resp) {
+                                resp.valores.forEach(v => {
+                                  iniciales[v.campoId] = v.valor;
+                                });
+                              } else {
+                                template.preguntas.forEach(p => {
+                                  iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+                                });
+                              }
+                              setInvestigadorFormState(iniciales);
+                              setIsEditingInvestigadorAnexos(true);
                             }}
-                            style={{ fontSize: '12px', padding: '6px 12px' }}
+                            style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px' }}
                           >
-                            Cancelar
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" />
+                            </svg>
+                            Habilitar Edición
                           </button>
-                          <button
-                            type="button"
-                            className="eval-btn eval-btn--primary"
-                            onClick={() => {
-                              const valores: ValorCampo[] = Object.keys(investigadorFormState).map(key => ({
-                                campoId: key,
-                                valor: investigadorFormState[key]
-                              }));
+                        ) : (
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              type="button"
+                              className="eval-btn eval-btn--outline"
+                              onClick={() => {
+                                setIsEditingInvestigadorAnexos(false);
+                              }}
+                              style={{ fontSize: '12px', padding: '6px 12px' }}
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="eval-btn eval-btn--primary"
+                              onClick={() => {
+                                const valores: ValorCampo[] = Object.keys(investigadorFormState).map(key => ({
+                                  campoId: key,
+                                  valor: investigadorFormState[key]
+                                }));
 
-                              guardarRespuestaAnexo({
-                                anexoTemplateId: template.id,
-                                documentoId: documento.id,
-                                seccionId: firstSection?.id || 'sec-creacion',
-                                versionArchivoId: latestVersion?.id || '',
-                                emitidoPorId: resp ? resp.emitidoPorId : currentUser.id,
-                                emitidoPorNombre: resp ? resp.emitidoPorNombre : currentUser.name,
-                                valores,
-                                comentariosAnotados: resp ? resp.comentariosAnotados : []
-                              });
+                                guardarRespuestaAnexo({
+                                  anexoTemplateId: template.id,
+                                  documentoId: documento.id,
+                                  seccionId: firstSection?.id || 'sec-creacion',
+                                  versionArchivoId: latestVersion?.id || '',
+                                  emitidoPorId: resp ? resp.emitidoPorId : currentUser.id,
+                                  emitidoPorNombre: resp ? resp.emitidoPorNombre : currentUser.name,
+                                  valores,
+                                  comentariosAnotados: resp ? resp.comentariosAnotados : []
+                                });
 
-                              setIsEditingInvestigadorAnexos(false);
-                              window.alert('Cambios guardados con éxito.');
-                            }}
-                            style={{ fontSize: '12px', padding: '6px 12px' }}
-                          >
-                            Guardar Cambios
-                          </button>
-                        </div>
-                      )}
+                                setIsEditingInvestigadorAnexos(false);
+                                window.alert('Cambios guardados con éxito.');
+                              }}
+                              style={{ fontSize: '12px', padding: '6px 12px' }}
+                            >
+                              Guardar Cambios
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

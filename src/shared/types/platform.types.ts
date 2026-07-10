@@ -99,6 +99,7 @@ export interface Pregunta {
   tipo: CampoTipo;
   descripcionContexto?: string; // Texto descriptivo opcional antes de la pregunta
   orden: number;
+  key?: string; // Nombre del tag en el Word (ej. "nombre_evaluador")
 }
 
 export interface AnexoTemplate {
@@ -107,6 +108,8 @@ export interface AnexoTemplate {
   nombre: string;
   rol: 'investigador' | 'evaluador';
   preguntas: Pregunta[];
+  wordTemplateName?: string;      // Nombre del archivo de plantilla subido
+  wordTemplateBase64?: string;    // Contenido binario codificado en base64 para docxtemplater
 }
 
 export interface AnexoAsignado {

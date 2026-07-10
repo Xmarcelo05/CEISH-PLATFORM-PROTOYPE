@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
 import { ceishFileCache } from '../../store/fileCache';
 import { CrearInvestigacionModal } from './components/CrearInvestigacionModal';
+import { generateDocx } from '../../utils/docxGenerator';
 import type { ValorCampo } from '../../shared/types/platform.types';
 import './student.css';
 
@@ -59,6 +60,40 @@ export function SubmissionPage() {
       setRespuestasForm(iniciales);
     }
   }, [activeAnexoId, selectedDocId, latestVersion?.id]);
+
+  const handleDownloadWordTemplate = (anexoId: string) => {
+    const template = anexosTemplates.find(t => t.id === anexoId);
+    if (!template) return;
+    if (!template.wordTemplateBase64) {
+      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
+      return;
+    }
+
+    const dataToInject: Record<string, any> = {
+      codigo: selectedDoc?.codigo || '',
+      tema: selectedDoc?.tema || '',
+      nombre_evaluador: 'Evaluador CEISH',
+      fecha: new Date().toLocaleDateString('es-ES'),
+      resultado: 'Solicitado',
+      observaciones: 'Sin observaciones.',
+    };
+
+    template.preguntas.forEach(p => {
+      const val = respuestasForm[p.id];
+      const tag = p.key || `tag_${p.orden}`;
+      
+      if (p.tipo === 'checklist') {
+        dataToInject[tag] = val ? 'CUMPLE / CONFORME' : 'NO CUMPLE / NO CONFORME';
+      } else if (p.tipo === 'archivo') {
+        dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
+      } else {
+        dataToInject[tag] = val || '';
+      }
+    });
+
+    const fileName = `Anexo_${template.numero}_${selectedDoc?.codigo || 'CEISH'}`;
+    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+  };
 
   // Autoseleccionar la primera pestaña de anexo al abrir un documento en borrador
   useEffect(() => {
@@ -530,9 +565,21 @@ export function SubmissionPage() {
 
                   return (
                     <form onSubmit={handleGuardarAnexo} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '14px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <h5 style={{ margin: 0, fontSize: '13px', color: '#1e293b' }}>
-                        Anexo {template.numero} - {template.nombre}
-                      </h5>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h5 style={{ margin: 0, fontSize: '13px', color: '#1e293b', flex: 1 }}>
+                          Anexo {template.numero} - {template.nombre}
+                        </h5>
+                        {template.wordTemplateBase64 && (
+                          <button
+                            type="button"
+                            className="eval-btn eval-btn--sm eval-btn--primary"
+                            onClick={() => handleDownloadWordTemplate(template.id)}
+                            style={{ fontSize: '11px', padding: '4px 8px', marginLeft: '10px' }}
+                          >
+                            📥 Descargar Word Relleno
+                          </button>
+                        )}
+                      </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {template.preguntas.map(p => (

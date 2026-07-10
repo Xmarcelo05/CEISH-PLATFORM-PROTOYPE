@@ -40,27 +40,25 @@ Reglas de combinación y herencia de roles (Acumulación):
 
 ## 2. Autenticación (fuera de alcance de esta fase — sin cambios)
 
-Sigue igual que v2: login simulado con credenciales seed, sin JWT ni Microsoft 365 real.
-
 ## 3. El motor configurable — conceptos nuevos
 
-Esta es la pieza central de la v3. Reemplaza la idea de "4 etapas fijas" (o incluso "2 etapas fijas de Investigación") por una jerarquía configurable:
+Esta es la pieza central de la v3. Reemplaza la idea de "formularios puros en HTML" por un motor basado en **plantillas de Word oficiales (.docx) rellenadas mediante variables**:
 
 ```
 Tipo de Documento (ej. "Investigación", "Tesis", "Artículo científico")
   └─ Sección / Etapa (ej. "Creación", "Estratificación", "Evaluación")
-       └─ Anexo (plantilla reutilizable entre tipos de documento, ej. "Anexo 27")
-            └─ Pregunta (checklist / texto abierto / sí-no, con descripción opcional)
+       └─ Anexo (asociado a una plantilla Word .docx oficial)
+            └─ Variable / Campo (Etiqueta, Tipo de Entrada, Tag de Word {tag})
 ```
 
 **Reglas de este motor:**
 
-- **Los anexos son reutilizables entre tipos de documento.** El admin crea el Anexo 27 una sola vez; puede agregarlo tanto al tipo "Investigación" como a un futuro tipo "Tesis" sin duplicar la plantilla.
+- **Los anexos son reutilizables entre tipos de documento.** El admin asocia una plantilla de Word `.docx` al Anexo 27 y puede reutilizarla en múltiples flujos.
 - **El orden de los anexos dentro de una sección es solo visual/de presentación.** El usuario puede saltar libremente entre ellos — no hay bloqueo secuencial estricto.
 - **Cada anexo se marca como obligatorio u opcional** al crearlo (ej. Anexo 23 es opcional — solo se llena si hay conflicto de interés).
 - **Cada anexo tiene un rol asignado** (Investigador o Evaluador) — determina quién lo ve/llena.
 - **Una sección se puede "completar"** cuando todos sus anexos obligatorios fueron guardados al menos una vez; los opcionales no bloquean el avance. El botón "Completar etapa" se activa solo bajo esa condición.
-- **El admin crea las preguntas de cada anexo** con tipo (checklist / texto abierto / sí-no) y una descripción/tema opcional antes de cada pregunta para dar contexto.
+- **El admin diseña las variables de entrada de cada anexo** indicando la etiqueta visual del formulario, el tipo (checklist / texto libre / archivo) y el **Tag de Word** exacto (ej. `{nombre_investigador}`) que reside en el documento físico subido.
 - **Comportamientos especiales por anexo (ej. Anexo 23 dispara reasignación de evaluador) se programan a mano, caso por caso** — no existe (por ahora) un sistema genérico donde el admin configure "qué acción dispara este anexo".
 - **Progreso persistente:** los formularios guardados se mantienen aunque el usuario salga de la etapa sin completar todos los anexos.
 
@@ -72,10 +70,10 @@ El tipo de documento "Investigación" queda configurado (como dato semilla) con 
 Tipo de Documento: "Investigación"
 
   Etapa 1: Creación de Investigación          [todos los anexos: rol Investigador]
-    - Anexo 1 al Anexo 9 (obligatorios, formulario)
+    - Anexo 1 al Anexo 9 (obligatorios, plantilla Word + variables)
 
   Etapa 2: Estratificación                    [todos los anexos: rol Evaluador]
-    - Anexo 27: Estratificación de Riesgo (obligatorio)
+    - Anexo 27: Estratificación de Riesgo (obligatorio, plantilla Word + variables)
     - Anexo 11: Carta de Exención (obligatorio — se llena si el riesgo es "sin riesgo")
     - Anexo 23: Conflicto de Intereses (opcional — solo si aplica)
 
@@ -91,8 +89,8 @@ Tipo de Documento: "Investigación"
 
 - **TipoDocumento**: id, nombre (ej. "Investigación", "Tesis"), lista ordenada de `Seccion`.
 - **Seccion** (etapa): id, nombre, orden, lista de `AnexoAsignado` (referencia a un `AnexoTemplate` + flag `obligatorio`).
-- **AnexoTemplate**: id, número, nombre, rol (`investigador` | `evaluador`), lista de `Pregunta`. Reutilizable entre `TipoDocumento`s.
-- **Pregunta**: id, texto, tipo (`checklist` | `texto-abierto` | `si-no`), descripción/contexto opcional, orden.
+- **AnexoTemplate**: id, número, nombre, rol (`investigador` | `evaluador`), wordTemplateName (nombre del archivo .docx), wordTemplateBase64 (contenido binario del Word en base64), lista de `Pregunta` (variables).
+- **Pregunta** (Variable): id, key (tag de Word {tag} a reemplazar), texto (etiqueta del formulario), tipo (`checklist` | `texto-libre` | `archivo`), descripción/contexto opcional, orden.
 - **Documento** (antes `Investigacion`, generalizado): id, código único, `tipoDocumentoId`, tema, descripción, autores (por cédula), investigadorId, miembrosCeishDeclarados, estado, versionesArchivo, historialEstados, cronómetro.
 - **Autor**: cédula (identificador principal), nombre (autocompletado si la cédula corresponde a un usuario registrado; si no, queda solo la cédula).
 - **RespuestaAnexo** (antes `EmisionAnexo`, generalizado): id, `anexoTemplateId`, `documentoId`, `seccionId`, versión de archivo asociada, quién la llenó, fecha, respuestas por pregunta, resultado/acción disparada si aplica, **snapshot congelado** de las preguntas tal como estaban al momento de guardar (para auditoría — ver sección 8).

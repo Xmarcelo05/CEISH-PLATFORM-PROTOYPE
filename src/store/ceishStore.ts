@@ -157,6 +157,8 @@ const addAnexoTemplateToState = (
   nombre: string,
   rol: 'investigador' | 'evaluador',
   preguntasInput: Omit<Pregunta, 'id'>[],
+  wordTemplateName?: string,
+  wordTemplateBase64?: string,
   customId?: string
 ): Partial<CeishState> => {
   const id = customId || `anexo-${generateUUID()}`;
@@ -165,10 +167,19 @@ const addAnexoTemplateToState = (
     texto: p.texto,
     tipo: p.tipo,
     descripcionContexto: p.descripcionContexto,
-    orden: p.orden ?? idx + 1
+    orden: p.orden ?? idx + 1,
+    key: p.key || `tag_${idx + 1}`
   }));
 
-  const nuevoTemplate: AnexoTemplate = { id, numero, nombre, rol, preguntas };
+  const nuevoTemplate: AnexoTemplate = { 
+    id, 
+    numero, 
+    nombre, 
+    rol, 
+    preguntas,
+    wordTemplateName,
+    wordTemplateBase64
+  };
   return {
     anexosTemplates: [...state.anexosTemplates, nuevoTemplate]
   };
@@ -212,6 +223,8 @@ interface CeishState {
     nombre: string,
     rol: 'investigador' | 'evaluador',
     preguntas: Omit<Pregunta, 'id'>[],
+    wordTemplateName?: string,
+    wordTemplateBase64?: string,
     customId?: string
   ) => void;
   editarAnexoTemplate: (
@@ -219,7 +232,9 @@ interface CeishState {
     numero: number,
     nombre: string,
     rol: 'investigador' | 'evaluador',
-    preguntas: (Omit<Pregunta, 'id'> & { id?: string })[]
+    preguntas: (Omit<Pregunta, 'id'> & { id?: string })[],
+    wordTemplateName?: string,
+    wordTemplateBase64?: string
   ) => void;
   eliminarAnexoTemplate: (id: string) => void;
 
@@ -305,6 +320,8 @@ interface CeishState {
 // ============================================================================
 // STORE INITIAL STATE SEEDER
 // ============================================================================
+const SEED_DOCX_BASE64 = "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";
+
 const generarEstadoInicial = () => {
   let temp = {
     anexosTemplates: [] as AnexoTemplate[],
@@ -318,53 +335,53 @@ const generarEstadoInicial = () => {
 
   // 1. Acumular Anexos 1 a 9 del Investigador
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 1, 'Solicitud de Revisión Técnica', 'investigador', [
-    { texto: 'Título descriptivo del proyecto de investigación', tipo: 'texto-libre', orden: 1 },
-    { texto: 'Breve justificación e hipótesis de trabajo', tipo: 'texto-libre', orden: 2 }
-  ], 'anexo-1') } as any;
+    { texto: 'Título descriptivo del proyecto de investigación', tipo: 'texto-libre', orden: 1, key: 'tema' },
+    { texto: 'Breve justificación e hipótesis de trabajo', tipo: 'texto-libre', orden: 2, key: 'observaciones' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-1') } as any;
 
   for (let i = 2; i <= 9; i++) {
     temp = { ...temp, ...addAnexoTemplateToState(temp as any, i, `Anexo ${i} Formulario de Ficha Ética`, 'investigador', [
-      { texto: `Pregunta declaratoria de cumplimiento Anexo ${i}`, tipo: 'checklist', orden: 1 }
-    ], `anexo-${i}`) } as any;
+      { texto: `Pregunta declaratoria de cumplimiento Anexo ${i}`, tipo: 'checklist', orden: 1, key: `cumplimiento_anexo_${i}` }
+    ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, `anexo-${i}`) } as any;
   }
 
   // 2. Acumular Anexos del Evaluador (Estratificación y Evaluación)
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 27, 'Formato para Estratificación de Riesgos', 'evaluador', [
-    { texto: '1. ¿La investigación involucra procedimientos que puedan causar daño físico o psicológico directo al sujeto?', tipo: 'checklist', orden: 1 },
-    { texto: '2. ¿Se recolectan datos personales sensibles o información privada de carácter confidencial?', tipo: 'checklist', orden: 2 },
-    { texto: '3. ¿Se utilizan muestras biológicas humanas (sangre, tejidos, fluidos)?', tipo: 'checklist', orden: 3 },
-    { texto: '4. ¿Involucra poblaciones vulnerables (niños, personas con discapacidad, etc.)?', tipo: 'checklist', orden: 4 },
-    { texto: 'Justificación / Criterio final del revisor', tipo: 'texto-libre', orden: 5 }
-  ], 'anexo-27') } as any;
+    { texto: '1. ¿La investigación involucra procedimientos que puedan causar daño físico o psicológico directo al sujeto?', tipo: 'checklist', orden: 1, key: 'procedimientos_riesgo' },
+    { texto: '2. ¿Se recolectan datos personales sensibles o información privada de carácter confidencial?', tipo: 'checklist', orden: 2, key: 'datos_sensibles' },
+    { texto: '3. ¿Se utilizan muestras biológicas humanas (sangre, tejidos, fluidos)?', tipo: 'checklist', orden: 3, key: 'muestras_biologicas' },
+    { texto: '4. ¿Involucra poblaciones vulnerables (niños, personas con discapacidad, etc.)?', tipo: 'checklist', orden: 4, key: 'poblaciones_vulnerables' },
+    { texto: 'Justificación / Criterio final del revisor', tipo: 'texto-libre', orden: 5, key: 'observaciones' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-27') } as any;
 
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 11, 'Formato de Carta de Exención (Sin Riesgo)', 'evaluador', [
-    { texto: 'Justificación técnica del cumplimiento de criterios de exención ética', tipo: 'texto-libre', orden: 1 },
-    { texto: 'Declaración formal de exención de revisión por el comité CEISH', tipo: 'checklist', orden: 2 }
-  ], 'anexo-11') } as any;
+    { texto: 'Justificación técnica del cumplimiento de criterios de exención ética', tipo: 'texto-libre', orden: 1, key: 'observaciones' },
+    { texto: 'Declaración formal de exención de revisión por el comité CEISH', tipo: 'checklist', orden: 2, key: 'declaracion_exencion' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-11') } as any;
 
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 23, 'Declaración de Conflicto de Intereses', 'evaluador', [
-    { texto: 'Describa detalladamente la causa de su conflicto de interés con el proyecto o sus autores', tipo: 'texto-libre', orden: 1 },
-    { texto: 'Declaración juramentada de inhibición en el proceso de evaluación', tipo: 'checklist', orden: 2 }
-  ], 'anexo-23') } as any;
+    { texto: 'Describa detalladamente la causa de su conflicto de interés con el proyecto o sus autores', tipo: 'texto-libre', orden: 1, key: 'observaciones' },
+    { texto: 'Declaración juramentada de inhibición en el proceso de evaluación', tipo: 'checklist', orden: 2, key: 'declaracion_inhibicion' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-23') } as any;
 
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 12, 'Check List de Evaluación de Proyecto', 'evaluador', [
-    { texto: 'A. Título de la investigación descriptivo y delimitado', tipo: 'checklist', orden: 1 },
-    { texto: 'B. Justificación teórica y empírica del problema de investigación', tipo: 'checklist', orden: 2 },
-    { texto: 'C. Objetivos específicos coherentes con el objetivo general', tipo: 'checklist', orden: 3 },
-    { texto: 'D. Diseño metodológico adecuado y detallado', tipo: 'checklist', orden: 4 },
-    { texto: 'E. Consideraciones éticas aplicables debidamente fundamentadas', tipo: 'checklist', orden: 5 },
-    { texto: 'F. Observaciones generales detalladas', tipo: 'texto-libre', orden: 6 }
-  ], 'anexo-12') } as any;
+    { texto: 'A. Título de la investigación descriptivo y delimitado', tipo: 'checklist', orden: 1, key: 'titulo_valido' },
+    { texto: 'B. Justificación teórica y empírica del problema de investigación', tipo: 'checklist', orden: 2, key: 'justificacion_valida' },
+    { texto: 'C. Objetivos específicos coherentes con el objetivo general', tipo: 'checklist', orden: 3, key: 'objetivos_coherentes' },
+    { texto: 'D. Diseño metodológico adecuado y detallado', tipo: 'checklist', orden: 4, key: 'diseno_metodologico' },
+    { texto: 'E. Consideraciones éticas aplicables debidamente fundamentadas', tipo: 'checklist', orden: 5, key: 'consideraciones_eticas' },
+    { texto: 'F. Observaciones generales detalladas', tipo: 'texto-libre', orden: 6, key: 'observaciones' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-12') } as any;
 
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 13, 'Formato para emisión de resoluciones de aprobación', 'evaluador', [
-    { texto: 'Declaración formal de Aprobación Ética y Metodológica', tipo: 'checklist', orden: 1 },
-    { texto: 'Términos y condiciones de la aprobación del proyecto', tipo: 'texto-libre', orden: 2 }
-  ], 'anexo-13') } as any;
+    { texto: 'Declaración formal de Aprobación Ética y Metodológica', tipo: 'checklist', orden: 1, key: 'declaracion_aprobacion' },
+    { texto: 'Términos y condiciones de la aprobación del proyecto', tipo: 'texto-libre', orden: 2, key: 'observaciones' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-13') } as any;
 
   temp = { ...temp, ...addAnexoTemplateToState(temp as any, 26, 'Resolución de suspensión o revocatoria', 'evaluador', [
-    { texto: 'Motivos de la suspensión/revocatoria (vencimiento de plazos, faltas éticas, etc.)', tipo: 'texto-libre', orden: 1 },
-    { texto: 'Declaración formal de suspensión de la validez del certificado aprobatorio', tipo: 'checklist', orden: 2 }
-  ], 'anexo-26') } as any;
+    { texto: 'Motivos de la suspensión/revocatoria (vencimiento de plazos, faltas éticas, etc.)', tipo: 'texto-libre', orden: 1, key: 'observaciones' },
+    { texto: 'Declaración formal de suspensión de la validez del certificado aprobatorio', tipo: 'checklist', orden: 2, key: 'declaracion_suspension' }
+  ], 'plantilla_oficial_ceish.docx', SEED_DOCX_BASE64, 'anexo-26') } as any;
 
   // 3. Crear el Tipo de Documento "Investigación" asociando las plantillas dinámicas
   temp = { ...temp, ...addTipoDocumentoToState(temp as any, 'Investigación', [
@@ -420,12 +437,12 @@ export const useCeishStore = create<CeishState>()(
       ...estadoInicialSemilla,
 
       // CRUD Anexos
-      crearAnexoTemplate: (numero, nombre, rol, preguntas, customId) => set((state) => ({
+      crearAnexoTemplate: (numero, nombre, rol, preguntas, wordTemplateName, wordTemplateBase64, customId) => set((state) => ({
         ...state,
-        ...addAnexoTemplateToState(state, numero, nombre, rol, preguntas, customId)
+        ...addAnexoTemplateToState(state, numero, nombre, rol, preguntas, wordTemplateName, wordTemplateBase64, customId)
       })),
 
-      editarAnexoTemplate: (id, numero, nombre, rol, preguntasInput) => set((state) => {
+      editarAnexoTemplate: (id, numero, nombre, rol, preguntasInput, wordTemplateName, wordTemplateBase64) => set((state) => {
         const idx = state.anexosTemplates.findIndex(t => t.id === id);
         if (idx === -1) return {};
 
@@ -435,10 +452,19 @@ export const useCeishStore = create<CeishState>()(
           texto: p.texto,
           tipo: p.tipo,
           descripcionContexto: p.descripcionContexto,
-          orden: p.orden ?? pIdx + 1
+          orden: p.orden ?? pIdx + 1,
+          key: p.key || `tag_${pIdx + 1}`
         }));
 
-        const nuevoTemplate: AnexoTemplate = { ...oldTemplate, numero, nombre, rol, preguntas: nuevasPreguntas };
+        const nuevoTemplate: AnexoTemplate = { 
+          ...oldTemplate, 
+          numero, 
+          nombre, 
+          rol, 
+          preguntas: nuevasPreguntas,
+          wordTemplateName: wordTemplateName !== undefined ? wordTemplateName : oldTemplate.wordTemplateName,
+          wordTemplateBase64: wordTemplateBase64 !== undefined ? wordTemplateBase64 : oldTemplate.wordTemplateBase64
+        };
         const nuevosTemplates = [...state.anexosTemplates];
         nuevosTemplates[idx] = nuevoTemplate;
 

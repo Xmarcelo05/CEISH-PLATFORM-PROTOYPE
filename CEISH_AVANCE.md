@@ -95,3 +95,16 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
   * `SubmissionPage.tsx` (panel "Anexos Emitidos"): se agregó una rama para mostrar el nombre del archivo adjunto con botón "Ver" cuando la pregunta emitida es de tipo `archivo`.
   * Los archivos de preguntas comparten la misma limitación ya documentada del PDF principal: viven en `ceishFileCache` (memoria del navegador) y se pierden al recargar la página.
 * **Verificación:** `npx tsc -b` corrió sin errores tras el cambio (ambos proyectos, app y node).
+
+### Sesión 4: Remplazo de Formularios por Plantillas de Word (.docx)
+* **Fecha:** 2026-07-10
+* **Motivo:** A pedido explícito del Product Owner para posibilitar la descarga de anexos en el formato oficial exacto (sin perder diagramación ni logos), se migra del sistema de formularios estáticos web a un sistema de plantillas Word oficiales (`.docx`).
+* **Implementación:**
+  * **Paquetes instalados:** `docxtemplater` y `pizzip` para procesar archivos de Word en el navegador.
+  * **Modelos de datos ([platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts)):** Añadidas propiedades `wordTemplateName` y `wordTemplateBase64` a `AnexoTemplate`, y `key` (tag de Word `{tag}`) a `Pregunta`.
+  * **Lógica del Store ([ceishStore.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/store/ceishStore.ts)):** Modificados métodos CRUD de anexos para procesar los metadatos y binarios de plantillas en base64. Integrada una constante `SEED_DOCX_BASE64` (acta base válida codificada) para alimentar las plantillas de semilla iniciales.
+  * **Utilidad del Generador ([docxGenerator.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/utils/docxGenerator.ts)):** Creada la utilidad `docxGenerator.ts` que decodifica plantillas base64, realiza la fusión (merge) con las variables del formulario y dispara la descarga en el navegador en caliente.
+  * **Consola de Administración ([AnexoTemplateCRUD.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/AnexoTemplateCRUD.tsx)):** Rediseñado el panel para subir archivos de Word `.docx` (convertidos a base64 vía FileReader) y mapear tags del Word con campos visuales (texto, conformidad, archivo).
+  * **Pantallas de Revisión y Alumno ([ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) y [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx)):** Añadidos botones dinámicos de "Descargar Acta Word" que inyectan datos de los formularios y variables globales (código, tema, fecha, evaluador) en las plantillas oficiales.
+  * **Acciones Opcionales (Anexo 23 y 26):** Los botones de "Declarar Conflicto" y "Dar de Baja" ahora abren modales que renderizan los campos definidos para las plantillas de Word de conflicto (A23) y revocación (A26), permitiendo descargar las actas rellenas y confirmando las acciones de workflow.
+  * **Verificación:** Ejecución limpia de `npx tsc -b` sin errores de compilación.
