@@ -25,7 +25,7 @@
 
 ---
 
-## 1. Roles (sin cambios)
+## 1. Roles y Acumulación de Permisos
 
 | Rol | Alias | Puede hacer |
 |---|---|---|
@@ -33,7 +33,10 @@
 | **docente / revisor / evaluador / "miembro del CEISH"** | mismo rol | Revisar documentos asignados, llenar anexos de su rol, escalar al admin, devolver al investigador, darse de baja por conflicto de interés |
 | **administrador** | — | Todo lo anterior (puede ser revisor también) + gestionar usuarios + **motor configurable** (tipos de documento, secciones, anexos, preguntas) + resolver escalamientos + mensajería |
 
-Reglas de combinación de roles: sin cambios respecto a v2 (investigador es la base; revisor y admin acumulan permisos, no los reemplazan).
+Reglas de combinación y herencia de roles (Acumulación):
+- **Investigador (`student`)** es la base de todos los usuarios en la plataforma.
+- **Revisor/Evaluador (`evaluator`)** hereda los permisos de Investigador (acumula ambos roles: puede registrar y llenar sus propios proyectos, y a la vez revisar otros proyectos asignados ciegamente).
+- **Administrador (`admin`)** hereda acumulativamente todos los roles (Investigador + Revisor + Administrador).
 
 ## 2. Autenticación (fuera de alcance de esta fase — sin cambios)
 
@@ -100,16 +103,19 @@ Tipo de Documento: "Investigación"
 ## 5. Flujo general — instancia "Investigación" (ejemplo sobre el motor)
 
 ```
-1. Investigador crea un Documento, selecciona tipo "Investigación"
-   → tema, descripción, autores por cédula (autocompleta nombre si el usuario existe)
-   → el sistema cruza automáticamente cada cédula contra usuarios registrados:
-     si corresponde a un evaluador del CEISH, se marca conflicto de interés
-     automáticamente (si la cédula no está registrada, se deja pasar sin conflicto)
-2. Sistema asigna código único
-3. Investigador llena los Anexos 1-9 (Etapa 1) — puede saltar entre ellos libremente
-4. Una vez todos los obligatorios de Etapa 1 están guardados, se habilita
-   "Completar etapa" → se solicita revisión
-5. Sistema asigna un evaluador aleatorio, excluyendo conflictos de interés detectados
+1. Investigador inicia la creación de un nuevo proyecto en el modal.
+2. Selecciona el Tipo de Documento (flujo configurado por el admin, e.g. "Investigación").
+3. Completa los metadatos generales (Tema, descripción, co-autores por cédula, y declaración de conflictos de interés con evaluadores).
+   → El sistema autocompleta el nombre del co-autor si la cédula está registrada en el sistema.
+   → Si la cédula corresponde a un evaluador, se marca conflicto automáticamente.
+4. El sistema despliega un wizard con pestañas horizontales para rellenar los anexos obligatorios de la Etapa 1 (Anexo 1 al Anexo 9). El investigador navega libremente respondiendo las preguntas.
+5. El investigador sube el archivo PDF del protocolo (máx. 15MB).
+6. Una vez completados todos los anexos obligatorios de Etapa 1 y subido el PDF, se habilita el botón "Registrar Proyecto y Solicitar Revisión".
+7. Al confirmar el registro:
+   → El sistema genera un código único (CEISH-2026-XXXX).
+   → Guarda de forma atómica todas las respuestas de los anexos del Investigador.
+   → Realiza la transición a Estratificación (Etapa 2, estado `estratificacion`).
+   → Sortea de forma aleatoria y ciega a un evaluador disponible que no presente conflictos de interés y le asigna el proyecto.
 
 ── ETAPA 2: ESTRATIFICACIÓN ──────────────────────────────────
 6. Evaluador revisa los Anexos 1-9 ya llenados

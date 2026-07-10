@@ -53,6 +53,10 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
     * Transición directa al estado de Estratificación (Etapa 2) con asignación ciega de evaluador al registrar el proyecto.
     * Organización del panel del Evaluador en [EvaluatorDashboard.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/EvaluatorDashboard.tsx) en 3 pestañas: Pendientes (revisiones activas), Suspendidas (proyectos anulados) y Completadas (proyectos aprobados) con contadores dinámicos.
     * Adición de una pestaña de lectura **"Llenado Investigador (Etapa 1)"** en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) para que el evaluador pueda auditar las respuestas del investigador.
+    * Corrección de maquetación en la pantalla de evaluación dividida en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx), alineando el visor de PDF al lado izquierdo (`eval-pdf-panel`) y el panel de criterios al derecho (`criteria-panel`).
+    * Solución de usabilidad agregando barras de desplazamiento vertical automáticas (`overflowY: 'auto'`) al panel de revisión y líneas divisoras claras con sombreado lateral para evitar redimensionar o alejar el zoom de la pantalla.
+    * Implementación de la lógica de **roles acumulativos/heredados** en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx) permitiendo a Revisores y Administradores acceder fluidamente a las funciones de las jerarquías inferiores (ej. Revisor puede registrar e investigar sus propios proyectos, y Admin puede evaluar y revisar asignaciones).
+
 
 
 
