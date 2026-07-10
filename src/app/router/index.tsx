@@ -7,7 +7,6 @@ import { SubmissionPage } from '../../features/student/SubmissionPage';
 import { EvaluatorDashboard } from '../../features/evaluator/EvaluatorDashboard';
 import { ReviewPage } from '../../features/evaluator/components/ReviewPage';
 import { AdminDashboard } from '../../features/admin/AdminDashboard';
-import { AssignmentPanel } from '../../features/admin/components/AssignmentPanel';
 import { ReviewCeishPage } from '../../features/evaluator/components/ReviewCeishPage';
 import { AnexoTemplateCRUD } from '../../features/admin/components/AnexoTemplateCRUD';
 import { TipoDocumentoCRUD } from '../../features/admin/components/TipoDocumentoCRUD';
@@ -38,7 +37,6 @@ export function AppRouter() {
           <Route path="/estudiante" element={<SubmissionPage />} />
           <Route path="/evaluador" element={<EvaluatorDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/asignaciones" element={<AssignmentPanel />} />
           <Route path="/admin/anexos" element={<AnexoTemplateCRUD />} />
           <Route path="/admin/tipos-documento" element={<TipoDocumentoCRUD />} />
         </Route>
