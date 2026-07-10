@@ -224,6 +224,8 @@ curl "http://localhost:5173/api/reviews/d0000000-0000-0000-0000-000000000001"
 |--------|-----|-------|-----------|
 | Admin Demo | admin | admin@ceish.edu | demo123 |
 | Profesor Demo | teacher | profesor@ceish.edu | demo123 |
+| Evaluador Alterno CEISH | teacher | alterno@ceish.edu | demo123 |
+| Dr. Roberto Anchundia | teacher | roberto@ceish.edu | demo123 |
 | Juan Pérez | student | juan@ceish.edu | demo123 |
 | María López | student | maria@ceish.edu | demo123 |
 | Carlos Ruiz | student | carlos@ceish.edu | demo123 |

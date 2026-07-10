@@ -20,6 +20,9 @@ INSERT INTO users (id, name, email, password, role_id) VALUES
   ('a0000000-0000-0000-0000-000000000001', 'Admin Demo',   'admin@ceish.edu',   'demo123', '33333333-3333-3333-3333-333333333333'),
   -- profesor demo
   ('b0000000-0000-0000-0000-000000000001', 'Profesor Demo','profesor@ceish.edu','demo123', '22222222-2222-2222-2222-222222222222'),
+  -- evaluadores adicionales
+  ('b0000000-0000-0000-0000-000000000002', 'Evaluador Alterno CEISH', 'alterno@ceish.edu', 'demo123', '22222222-2222-2222-2222-222222222222'),
+  ('b0000000-0000-0000-0000-000000000003', 'Dr. Roberto Anchundia', 'roberto@ceish.edu', 'demo123', '22222222-2222-2222-2222-222222222222'),
   -- estudiantes demo
   ('c0000000-0000-0000-0000-000000000001', 'Juan Pérez',   'juan@ceish.edu',    'demo123', '11111111-1111-1111-1111-111111111111'),
   ('c0000000-0000-0000-0000-000000000002', 'María López',  'maria@ceish.edu',   'demo123', '11111111-1111-1111-1111-111111111111'),
