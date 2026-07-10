@@ -106,12 +106,27 @@ export function ReviewCeishPage() {
     );
   }
 
-  // Determinar dinámicamente la sección activa
+  // Determinar dinámicamente la sección activa (etapa actual del trámite — se usa para
+  // auto-seleccionar el primer anexo relevante al abrir la página)
   const activeSeccion = tipoDoc.secciones.find(s => {
     if (documento.estado === 'estratificacion') return s.id === 'sec-estratificacion';
     if (documento.estado === 'revision-tecnica') return s.id === 'sec-evaluacion';
     return false;
   }) || tipoDoc.secciones[1]; // Fallback a la segunda sección por seguridad
+
+  // El documento queda "congelado" (sin más ediciones) una vez aprobado o anulado
+  const documentoCerrado = documento.estado === 'aprobada' || documento.estado === 'anulada';
+
+  // Todas las secciones de evaluador (excluye la Etapa 1 "Creación", que es del investigador)
+  // — se usan para permitir volver a un anexo de una etapa anterior ya decidida y corregirlo,
+  // no solo el de la etapa actual.
+  const seccionesEvaluador = tipoDoc.secciones.slice(1);
+
+  // Encuentra la sección real a la que pertenece un anexo específico (en vez de asumir que
+  // siempre es la "activeSeccion" actual) — necesario porque un anexo ya decidido puede
+  // corregirse aunque el trámite ya haya avanzado a otra etapa.
+  const seccionIdDeAnexo = (anexoId: string | null): string =>
+    tipoDoc.secciones.find(s => s.anexos.some(a => a.anexoTemplateId === anexoId))?.id ?? activeSeccion.id;
 
   // Cargar respuestas de los anexos del investigador al formulario de edición local
   useEffect(() => {
@@ -212,7 +227,7 @@ export function ReviewCeishPage() {
     guardarRespuestaAnexo({
       anexoTemplateId: activeAnexoId,
       documentoId: documento.id,
-      seccionId: activeSeccion.id,
+      seccionId: seccionIdDeAnexo(activeAnexoId),
       versionArchivoId: latestVersion.id,
       emitidoPorId: currentUser.id,
       emitidoPorNombre: currentUser.name,
@@ -245,7 +260,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-27',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -263,7 +278,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-11',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -301,7 +316,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-27',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -342,7 +357,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: activeAnexoId || 'anexo-27',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -375,7 +390,7 @@ export function ReviewCeishPage() {
 
     crearEscalamiento(
       documento.id,
-      activeSeccion.id,
+      seccionIdDeAnexo(activeAnexoId),
       activeAnexoId || '',
       escalamientoComentario.trim(),
       resp?.id || ''
@@ -403,7 +418,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-12',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -420,7 +435,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-13',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -454,7 +469,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-12',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -481,7 +496,7 @@ export function ReviewCeishPage() {
       {
         anexoTemplateId: 'anexo-26',
         documentoId: documento.id,
-        seccionId: activeSeccion.id,
+        seccionId: seccionIdDeAnexo(activeAnexoId),
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
@@ -555,7 +570,7 @@ export function ReviewCeishPage() {
             className={`eval-tabs__btn ${activeTab === 'evaluacion-dinamica' ? 'active' : ''}`}
             onClick={() => setActiveTab('evaluacion-dinamica')}
           >
-            Formulario ({activeSeccion.nombre})
+            Formulario de Anexos
           </button>
           <button 
             className={`eval-tabs__btn ${activeTab === 'investigador-llenado' ? 'active' : ''}`}
@@ -628,9 +643,11 @@ export function ReviewCeishPage() {
           ) : (
             <div className="eval-dynamic-flow" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               
-              {/* Selector de Anexo según Configuración */}
-              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #cbd5e1', paddingBottom: '8px' }}>
-                {activeSeccion.anexos.map(an => {
+              {/* Selector de Anexo según Configuración — incluye todas las secciones de
+                  evaluador (no solo la etapa actual) para poder corregir un anexo ya decidido
+                  de una etapa anterior, mientras el trámite no esté cerrado. */}
+              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #cbd5e1', paddingBottom: '8px', flexWrap: 'wrap' }}>
+                {seccionesEvaluador.flatMap(sec => sec.anexos).map(an => {
                   const temp = anexosTemplates.find(t => t.id === an.anexoTemplateId);
                   if (!temp) return null;
 
@@ -772,14 +789,16 @@ export function ReviewCeishPage() {
                     )}
 
                     {/* BOTÓN GENERAL DE GUARDAR BORRADOR EN ANEXO */}
-                    <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #cbd5e1', paddingTop: '12px' }}>
-                      <button type="button" className="eval-btn eval-btn--outline" onClick={handleGuardarBorrador} style={{ fontSize: '12px' }}>
-                        Guardar Borrador
-                      </button>
-                      <button type="button" className="eval-btn eval-btn--outline eval-btn--danger" onClick={() => setShowEscalarModal(true)} style={{ fontSize: '12px', marginLeft: 'auto' }}>
-                        Escalar a Admin
-                      </button>
-                    </div>
+                    {!documentoCerrado && (
+                      <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #cbd5e1', paddingTop: '12px' }}>
+                        <button type="button" className="eval-btn eval-btn--outline" onClick={handleGuardarBorrador} style={{ fontSize: '12px' }}>
+                          Guardar Borrador
+                        </button>
+                        <button type="button" className="eval-btn eval-btn--outline eval-btn--danger" onClick={() => setShowEscalarModal(true)} style={{ fontSize: '12px', marginLeft: 'auto' }}>
+                          Escalar a Admin
+                        </button>
+                      </div>
+                    )}
 
                     {/* HISTORIAL DE RONDAS DE EVALUACIÓN ANTERIORES (Para Anexo 12) */}
                     {activeAnexoId === 'anexo-12' && rondasPreviasA12.length > 0 && (
@@ -813,8 +832,10 @@ export function ReviewCeishPage() {
                         ACCIONES FINALES SEGÚN LA ETAPA ACTIVA
                         ==================================================================== */}
                     
-                    {/* ACCIONES DE ESTRATIFICACIÓN (Etapa 2) */}
-                    {documento.estado === 'estratificacion' && activeAnexoId === 'anexo-27' && (
+                    {/* ACCIONES DE ESTRATIFICACIÓN (Etapa 2) — también disponible en
+                        'revision-tecnica' para poder corregir la decisión ya tomada,
+                        mientras el trámite no esté cerrado (aprobada/anulada). */}
+                    {!documentoCerrado && (documento.estado === 'estratificacion' || documento.estado === 'revision-tecnica') && activeAnexoId === 'anexo-27' && (
                       <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#eff6ff', padding: '14px', borderRadius: '8px' }}>
                         <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e3a8a' }}>Resolución de Estratificación (Etapa 1 CEISH)</h4>
                         
@@ -858,7 +879,7 @@ export function ReviewCeishPage() {
                     )}
 
                     {/* ACCIONES DE EVALUACIÓN TÉCNICA (Etapa 3) */}
-                    {documento.estado === 'revision-tecnica' && activeAnexoId === 'anexo-12' && (
+                    {!documentoCerrado && documento.estado === 'revision-tecnica' && activeAnexoId === 'anexo-12' && (
                       <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
                         <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#334155' }}>Dictamen de Revisión Metodológica</h4>
                         
@@ -1066,8 +1087,12 @@ export function ReviewCeishPage() {
                         Anexo {template.numero}: {template.nombre}
                       </h4>
                       
-                      {/* Botón para habilitar la edición */}
-                      {!isEditingInvestigadorAnexos ? (
+                      {/* Botón para habilitar la edición (bloqueado si el trámite ya está cerrado) */}
+                      {documentoCerrado ? (
+                        <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>
+                          Trámite cerrado — solo lectura
+                        </span>
+                      ) : !isEditingInvestigadorAnexos ? (
                         <button
                           type="button"
                           className="eval-btn eval-btn--outline"
@@ -1124,7 +1149,7 @@ export function ReviewCeishPage() {
                                 emitidoPorNombre: resp ? resp.emitidoPorNombre : currentUser.name,
                                 valores,
                                 comentariosAnotados: resp ? resp.comentariosAnotados : []
-                              });
+                              }, currentUser.id);
 
                               setIsEditingInvestigadorAnexos(false);
                               window.alert('Cambios guardados con éxito.');

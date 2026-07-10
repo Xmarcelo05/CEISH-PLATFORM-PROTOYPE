@@ -10,6 +10,7 @@ import type {
   VersionArchivo,
   Pregunta,
   CampoTipo,
+  ValorCampo,
   Seccion,
   TipoDocumento,
   AnexoAsignado,
@@ -127,6 +128,46 @@ const describirCambiosPreguntas = (preguntasAntes: Pregunta[], preguntasDespues:
     const stillExists = preguntasDespues.some(np => np.id === op.id);
     if (!stillExists) {
       cambios.push(`pregunta eliminada: "${op.texto}"`);
+    }
+  });
+
+  return cambios;
+};
+
+const RESULTADO_LABELS: Record<RespuestaAnexo['resultado'], string> = {
+  coincide: 'Coincide',
+  discrepa: 'Discrepa',
+  aprobado: 'Aprobado',
+  'con-observaciones': 'Con observaciones',
+  baja: 'Baja/Revocatoria',
+  'conflicto-interes': 'Conflicto de interés'
+};
+
+const formatValorNotificacion = (valor: unknown): string => {
+  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+  if (valor && typeof valor === 'object' && 'documentName' in (valor as Record<string, unknown>)) {
+    return String((valor as { documentName: unknown }).documentName);
+  }
+  if (valor === undefined || valor === null || valor === '') return '(vacío)';
+  return String(valor);
+};
+
+// Compara los valores (respuestas) de un anexo antes/después de sobrescribirlo y describe
+// en texto plano qué pregunta cambió de valor (para notificar ediciones de respuestas ya enviadas)
+const describirCambiosValores = (
+  preguntas: Pregunta[],
+  valoresAntes: ValorCampo[],
+  valoresDespues: ValorCampo[]
+): string[] => {
+  const cambios: string[] = [];
+
+  valoresDespues.forEach(vd => {
+    const va = valoresAntes.find(v => v.campoId === vd.campoId);
+    const antes = va ? va.valor : undefined;
+    if (JSON.stringify(antes) !== JSON.stringify(vd.valor)) {
+      const pregunta = preguntas.find(p => p.id === vd.campoId);
+      const etiqueta = pregunta ? pregunta.texto : vd.campoId;
+      cambios.push(`"${etiqueta}": ${formatValorNotificacion(antes)} → ${formatValorNotificacion(vd.valor)}`);
     }
   });
 
@@ -341,7 +382,8 @@ interface CeishState {
   solicitarRevision: (documentoId: string, solicitanteNombre: string) => void;
 
   guardarRespuestaAnexo: (
-    emision: Omit<RespuestaAnexo, 'id' | 'emitidoAt' | 'resultado' | 'snapshotPreguntas'>
+    emision: Omit<RespuestaAnexo, 'id' | 'emitidoAt' | 'resultado' | 'snapshotPreguntas'>,
+    actorId?: string
   ) => void;
 
   emitirAnexo: (
@@ -961,7 +1003,7 @@ export const useCeishStore = create<CeishState>()(
         };
       }),
 
-      guardarRespuestaAnexo: (emision) => set((state) => {
+      guardarRespuestaAnexo: (emision, actorId) => set((state) => {
         const index = state.respuestasAnexos.findIndex(
           re => re.documentoId === emision.documentoId && re.anexoTemplateId === emision.anexoTemplateId && re.versionArchivoId === emision.versionArchivoId
         );
@@ -970,11 +1012,15 @@ export const useCeishStore = create<CeishState>()(
         if (!template) return {};
 
         const timestamp = new Date().toISOString();
+        const anterior = index !== -1 ? state.respuestasAnexos[index] : null;
+
         const nuevaResp: RespuestaAnexo = {
           ...emision,
-          id: index !== -1 ? state.respuestasAnexos[index].id : generateUUID(),
+          id: anterior ? anterior.id : generateUUID(),
           emitidoAt: timestamp,
-          resultado: 'coincide', // Valor por defecto para borrador
+          // Preserva el resultado ya existente (borrador u oficial) en vez de degradarlo
+          // siempre a 'coincide' — evita que sobrescribir valores invalide una emisión oficial.
+          resultado: anterior ? anterior.resultado : 'coincide',
           snapshotPreguntas: template.preguntas
         };
 
@@ -985,8 +1031,36 @@ export const useCeishStore = create<CeishState>()(
           nuevasRespuestas.push(nuevaResp);
         }
 
+        // Notificación: edición de una respuesta que ya existía (más allá del primer guardado).
+        // El "actor" que realmente hace la edición puede diferir de emision.emitidoPorId
+        // (ej. el evaluador edita una respuesta del investigador conservando su autoría original).
+        let nuevasNotificaciones: Notificacion[] = [];
+        if (anterior) {
+          const cambiosValores = describirCambiosValores(template.preguntas, anterior.valores, emision.valores);
+          if (cambiosValores.length > 0) {
+            const doc = state.documentos.find(d => d.id === emision.documentoId);
+            if (doc) {
+              const quienEdita = actorId || emision.emitidoPorId;
+              const esInvestigadorQuienEdita = quienEdita === doc.investigadorId;
+              const evaluadoresActivos = state.asignaciones
+                .filter(a => a.documentoId === emision.documentoId && a.active)
+                .map(a => a.evaluadorId);
+
+              const destinatarios = esInvestigadorQuienEdita ? evaluadoresActivos : [doc.investigadorId];
+              const quien = esInvestigadorQuienEdita ? 'El investigador' : 'El evaluador';
+
+              nuevasNotificaciones = buildNotificaciones(
+                destinatarios,
+                `${quien} modificó la respuesta del Anexo ${template.numero} (${template.nombre}) en el proyecto ${doc.codigo}: ${cambiosValores.join('; ')}.`,
+                timestamp
+              );
+            }
+          }
+        }
+
         return {
-          respuestasAnexos: nuevasRespuestas
+          respuestasAnexos: nuevasRespuestas,
+          notificaciones: [...state.notificaciones, ...nuevasNotificaciones]
         };
       }),
 
@@ -1005,6 +1079,12 @@ export const useCeishStore = create<CeishState>()(
           resultado,
           snapshotPreguntas: template.preguntas
         };
+
+        // Capturar la emisión anterior (si existía) ANTES de filtrarla, para poder
+        // detectar si esto es una corrección de una respuesta ya enviada y describir qué cambió.
+        const anteriorEmision = state.respuestasAnexos.find(
+          re => re.documentoId === emision.documentoId && re.anexoTemplateId === emision.anexoTemplateId && re.versionArchivoId === emision.versionArchivoId
+        );
 
         // Limpiar algún borrador previo para esta versión/anexo/proyecto
         const filtradasResp = state.respuestasAnexos.filter(
@@ -1094,6 +1174,26 @@ export const useCeishStore = create<CeishState>()(
             `Tu proyecto ${doc.codigo} avanzó a la etapa: ${nuevoEstado}.`,
             timestamp
           ));
+        }
+
+        // Corrección de una emisión ya enviada: si ya existía una respuesta oficial previa
+        // para este anexo y algo cambió (resultado y/o valores), avisa al investigador con el
+        // detalle puntual — esto puede coexistir con las notificaciones de arriba si además
+        // cambió de etapa/resultado, o ser la única si solo se corrigió el contenido.
+        if (anteriorEmision) {
+          const cambiosEmision: string[] = [];
+          if (anteriorEmision.resultado !== resultado) {
+            cambiosEmision.push(`resultado: ${RESULTADO_LABELS[anteriorEmision.resultado]} → ${RESULTADO_LABELS[resultado]}`);
+          }
+          cambiosEmision.push(...describirCambiosValores(template.preguntas, anteriorEmision.valores, emision.valores));
+
+          if (cambiosEmision.length > 0) {
+            nuevasNotificaciones.push(...buildNotificaciones(
+              [doc.investigadorId],
+              `El evaluador corrigió su emisión del Anexo ${template.numero} (${template.nombre}) en tu proyecto ${doc.codigo}: ${cambiosEmision.join('; ')}.`,
+              timestamp
+            ));
+          }
         }
 
         return {

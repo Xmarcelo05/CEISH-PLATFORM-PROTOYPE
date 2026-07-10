@@ -3,7 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
 import { ceishFileCache } from '../../store/fileCache';
 import { CrearInvestigacionModal } from './components/CrearInvestigacionModal';
-import type { ValorCampo } from '../../shared/types/platform.types';
+import type { ValorCampo, Documento } from '../../shared/types/platform.types';
 import './student.css';
 
 export function SubmissionPage() {
@@ -22,6 +22,14 @@ export function SubmissionPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
+  // Dashboards separados (dominio, sección 14 punto 6): "todas mis investigaciones" vs.
+  // "pendientes de acción" (borradores sin enviar o devueltos con observaciones técnicas)
+  const [filtroTab, setFiltroTab] = useState<'todas' | 'pendientes'>('todas');
+
+  useEffect(() => {
+    setSelectedDocId(null);
+  }, [filtroTab]);
+
   // Estados para el llenado dinámico de anexos en la Etapa 1
   const [activeAnexoId, setActiveAnexoId] = useState<string | null>(null);
   const [respuestasForm, setRespuestasForm] = useState<Record<string, any>>({});
@@ -35,13 +43,16 @@ export function SubmissionPage() {
   // Filtrar documentos del investigador
   const misDocumentos = documentos.filter((d) => d.investigadorId === currentUser.id);
   const selectedDoc = documentos.find((d) => d.id === selectedDocId);
-  const latestVersion = selectedDoc?.versionesArchivo.slice(-1)[0];
+  // Los Anexos 1-9 (Etapa 1) se llenan sobre la PRIMERA versión del archivo, sin importar
+  // cuántas correcciones de PDF se suban después (subirCorreccion agrega versiones nuevas
+  // para la etapa de revisión técnica, no para las respuestas de Etapa 1).
+  const primeraVersionArchivo = selectedDoc?.versionesArchivo[0];
 
   // Cargar respuestas guardadas del anexo seleccionado en memoria local al cambiar de anexo o versión
   useEffect(() => {
-    if (selectedDoc && activeAnexoId && latestVersion) {
+    if (selectedDoc && activeAnexoId && primeraVersionArchivo) {
       const respGuardada = respuestasAnexos.find(
-        r => r.documentoId === selectedDoc.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
+        r => r.documentoId === selectedDoc.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === primeraVersionArchivo.id
       );
 
       const iniciales: Record<string, any> = {};
@@ -58,11 +69,12 @@ export function SubmissionPage() {
       }
       setRespuestasForm(iniciales);
     }
-  }, [activeAnexoId, selectedDocId, latestVersion?.id]);
+  }, [activeAnexoId, selectedDocId, primeraVersionArchivo?.id]);
 
-  // Autoseleccionar la primera pestaña de anexo al abrir un documento en borrador
+  // Autoseleccionar la primera pestaña de anexo al abrir un documento — los Anexos 1-9
+  // siguen editables mientras el trámite no esté cerrado (aprobada/anulada), no solo en 'creada'.
   useEffect(() => {
-    if (selectedDoc && selectedDoc.estado === 'creada') {
+    if (selectedDoc && selectedDoc.estado !== 'aprobada' && selectedDoc.estado !== 'anulada') {
       const tipoDoc = tiposDocumento.find(t => t.id === selectedDoc.tipoDocumentoId);
       const etapaCreacion = tipoDoc?.secciones[0];
       if (etapaCreacion && etapaCreacion.anexos.length > 0) {
@@ -90,7 +102,7 @@ export function SubmissionPage() {
   // Guardar respuestas de un anexo de Etapa 1
   const handleGuardarAnexo = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDoc || !activeAnexoId || !latestVersion) return;
+    if (!selectedDoc || !activeAnexoId || !primeraVersionArchivo) return;
 
     const valores: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
       campoId: key,
@@ -104,7 +116,7 @@ export function SubmissionPage() {
       anexoTemplateId: activeAnexoId,
       documentoId: selectedDoc.id,
       seccionId,
-      versionArchivoId: latestVersion.id,
+      versionArchivoId: primeraVersionArchivo.id,
       emitidoPorId: currentUser.id,
       emitidoPorNombre: currentUser.name,
       valores,
@@ -185,9 +197,9 @@ export function SubmissionPage() {
 
   // Verificar si un anexo ya fue guardado
   const isAnexoCompletado = (anexoId: string) => {
-    if (!selectedDoc || !latestVersion) return false;
+    if (!selectedDoc || !primeraVersionArchivo) return false;
     return respuestasAnexos.some(
-      r => r.documentoId === selectedDoc.id && r.anexoTemplateId === anexoId && r.versionArchivoId === latestVersion.id
+      r => r.documentoId === selectedDoc.id && r.anexoTemplateId === anexoId && r.versionArchivoId === primeraVersionArchivo.id
     );
   };
 
@@ -218,25 +230,38 @@ export function SubmissionPage() {
       });
   };
 
-  // Obtener la última evaluación técnica (Anexo 12) emitida
-  const getUltimoAnexo12Emitido = () => {
-    if (!selectedDoc) return null;
+  // Obtener la última evaluación técnica (Anexo 12) emitida para un documento cualquiera
+  const getUltimoAnexo12Emitido = (docId: string) => {
     const emisiones = respuestasAnexos.filter(
-      r => r.documentoId === selectedDoc.id && r.anexoTemplateId === 'anexo-12'
+      r => r.documentoId === docId && r.anexoTemplateId === 'anexo-12'
     );
     if (emisiones.length === 0) return null;
     return emisiones.sort((a, b) => new Date(b.emitidoAt).getTime() - new Date(a.emitidoAt).getTime())[0];
   };
 
-  const ultimoA12 = getUltimoAnexo12Emitido();
-  const tieneObservacionesPendientes = selectedDoc?.estado === 'revision-tecnica' && ultimoA12?.resultado === 'con-observaciones';
+  const tieneObservacionesTecnicas = (doc: Documento) =>
+    doc.estado === 'revision-tecnica' && getUltimoAnexo12Emitido(doc.id)?.resultado === 'con-observaciones';
+
+  // "Pendiente de acción": borrador sin enviar (falta completar/solicitar revisión) o
+  // devuelto con observaciones técnicas (falta subir PDF corregido)
+  const necesitaAccion = (doc: Documento) => doc.estado === 'creada' || tieneObservacionesTecnicas(doc);
+
+  const documentosPendientes = misDocumentos.filter(necesitaAccion);
+  const documentosFiltrados = filtroTab === 'pendientes' ? documentosPendientes : misDocumentos;
+
+  const ultimoA12 = selectedDoc ? getUltimoAnexo12Emitido(selectedDoc.id) : null;
+  const selectedTieneObservaciones = selectedDoc ? tieneObservacionesTecnicas(selectedDoc) : false;
 
   return (
     <div className="page">
       <div className="page__header">
         <div>
           <h1 className="page__title">Mis Investigaciones</h1>
-          <p className="page__subtitle">Cree y gestione sus trámites de evaluación ética y metodológica ante el CEISH</p>
+          <p className="page__subtitle">
+            {documentosPendientes.length > 0
+              ? `${documentosPendientes.length} proyecto(s) requieren tu acción (borrador sin enviar u observaciones técnicas pendientes)`
+              : 'Cree y gestione sus trámites de evaluación ética y metodológica ante el CEISH'}
+          </p>
         </div>
         <button className="eval-btn eval-btn--primary" onClick={() => setModalOpen(true)}>
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none" style={{ marginRight: '6px' }}>
@@ -247,10 +272,28 @@ export function SubmissionPage() {
       </div>
 
       <div className="page__body" style={{ display: 'grid', gridTemplateColumns: selectedDoc ? '1fr 400px' : '1fr', gap: '20px', alignItems: 'start' }}>
-        
+
         {/* Tabla / Lista de Investigaciones */}
         <div className="card" style={{ padding: '20px', background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          {misDocumentos.length === 0 ? (
+          {/* Dashboards separados: todas las investigaciones vs. pendientes de acción */}
+          <div className="eval-tabs" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '16px', display: 'flex', gap: '6px' }}>
+            <button
+              className={`eval-tabs__btn ${filtroTab === 'todas' ? 'active' : ''}`}
+              onClick={() => setFiltroTab('todas')}
+              style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Todas mis Investigaciones ({misDocumentos.length})
+            </button>
+            <button
+              className={`eval-tabs__btn ${filtroTab === 'pendientes' ? 'active' : ''}`}
+              onClick={() => setFiltroTab('pendientes')}
+              style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Pendientes de Acción ({documentosPendientes.length})
+            </button>
+          </div>
+
+          {documentosFiltrados.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 0' }}>
               <div className="empty-state__icon" style={{ margin: '0 auto 16px auto' }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
@@ -258,13 +301,24 @@ export function SubmissionPage() {
                   <path d="M12 11v6M9 14h6" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
               </div>
-              <h2 className="empty-state__title">No tienes investigaciones registradas</h2>
-              <p className="empty-state__desc" style={{ maxWidth: '400px', margin: '8px auto 16px auto', color: '#64748b' }}>
-                Comience registrando su protocolo de investigación y completando la ficha de anexos requeridos para solicitar la revisión.
-              </p>
-              <button className="eval-btn eval-btn--primary" onClick={() => setModalOpen(true)}>
-                Registrar Proyecto
-              </button>
+              {filtroTab === 'pendientes' ? (
+                <>
+                  <h2 className="empty-state__title">Nada pendiente por ahora</h2>
+                  <p className="empty-state__desc" style={{ maxWidth: '400px', margin: '8px auto 16px auto', color: '#64748b' }}>
+                    No tienes borradores sin enviar ni observaciones técnicas por corregir.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="empty-state__title">No tienes investigaciones registradas</h2>
+                  <p className="empty-state__desc" style={{ maxWidth: '400px', margin: '8px auto 16px auto', color: '#64748b' }}>
+                    Comience registrando su protocolo de investigación y completando la ficha de anexos requeridos para solicitar la revisión.
+                  </p>
+                  <button className="eval-btn eval-btn--primary" onClick={() => setModalOpen(true)}>
+                    Registrar Proyecto
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -278,7 +332,7 @@ export function SubmissionPage() {
                 </tr>
               </thead>
               <tbody>
-                {misDocumentos.map((doc) => (
+                {documentosFiltrados.map((doc) => (
                   <tr 
                     key={doc.id} 
                     onClick={() => setSelectedDocId(doc.id)}
@@ -304,6 +358,14 @@ export function SubmissionPage() {
                     </td>
                     <td style={{ padding: '14px 8px' }}>
                       {renderEstadoBadge(doc.estado)}
+                      {filtroTab === 'todas' && necesitaAccion(doc) && (
+                        <span
+                          title="Requiere tu acción"
+                          style={{ marginLeft: '6px', fontSize: '11px', color: '#d97706', fontWeight: 700 }}
+                        >
+                          ⚠️
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '14px 8px', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -397,7 +459,7 @@ export function SubmissionPage() {
             </div>
 
             {/* FASE 2: TAREA 2.3 - SUBIDA DE CORRECCIONES EN RONDAS */}
-            {tieneObservacionesPendientes && (
+            {selectedTieneObservaciones && (
               <form onSubmit={handleEnviarCorreccion} style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '14px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <p style={{ fontSize: '12px', color: '#854d0e', fontWeight: 700, margin: 0 }}>
                   ⚠️ Observaciones Técnicas Pendientes
@@ -476,11 +538,14 @@ export function SubmissionPage() {
               </form>
             )}
 
-            {/* FASE 2: TAREA 2.2 - LLENADO DINÁMICO DE ANEXOS (ETAPA 1: CREACIÓN) */}
-            {selectedDoc.estado === 'creada' && (
+            {/* FASE 2: TAREA 2.2 - LLENADO DINÁMICO DE ANEXOS (ETAPA 1: CREACIÓN).
+                Sigue disponible más allá de 'creada' para poder corregir una respuesta ya
+                enviada mientras el trámite no esté cerrado (aprobada/anulada); el evaluador
+                activo recibe una notificación con el detalle de qué cambió. */}
+            {selectedDoc.estado !== 'aprobada' && selectedDoc.estado !== 'anulada' && (
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                 <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 8px 0', textTransform: 'uppercase', fontWeight: 600 }}>
-                  Fichas de Anexos Técnicos (Etapa 1)
+                  Fichas de Anexos Técnicos (Etapa 1){selectedDoc.estado !== 'creada' ? ' — Edición de respuesta ya enviada' : ''}
                 </p>
 
                 {/* Lista de pestañas de anexos configurados */}
