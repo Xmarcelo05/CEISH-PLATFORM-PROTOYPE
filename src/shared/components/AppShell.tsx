@@ -51,15 +51,6 @@ const ADMIN_NAV: NavItem[] = [
     ),
   },
   {
-    to: '/admin/asignaciones',
-    label: 'Asignaciones',
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-        <path d="M9 2v14M2 9h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
     to: '/admin/anexos',
     label: 'Configurar Anexos',
     icon: (

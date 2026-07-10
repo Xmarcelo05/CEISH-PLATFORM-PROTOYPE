@@ -24,8 +24,8 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
 
-  // Tabs: 'proyectos' o 'evaluadores'
-  const [activeTab, setActiveTab] = useState<'proyectos' | 'evaluadores'>('proyectos');
+  // Tabs: 'proyectos', 'evaluadores' o 'investigadores'
+  const [activeTab, setActiveTab] = useState<'proyectos' | 'evaluadores' | 'investigadores'>('proyectos');
 
   // CEISH documents search & filters
   const { documentos, asignaciones, editarDocumento } = useCeishStore();
@@ -40,6 +40,10 @@ export function AdminDashboard() {
   const [editRiesgoConfirmado, setEditRiesgoConfirmado] = useState<RiesgoTipo | 'none'>('none');
   const [editEstado, setEditEstado] = useState<DocumentoEstado>('creada');
   const [editEvaluadorId, setEditEvaluadorId] = useState<string>('');
+
+  // Modal de proyectos por investigador
+  const [selectedResearcherForProjects, setSelectedResearcherForProjects] = useState<User | null>(null);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -198,6 +202,22 @@ export function AdminDashboard() {
           >
             👥 Carga de Evaluadores ({rows.length})
           </button>
+          <button 
+            className={`eval-tabs__btn ${activeTab === 'investigadores' ? 'active' : ''}`}
+            onClick={() => setActiveTab('investigadores')}
+            style={{
+              padding: '8px 16px',
+              fontWeight: 600,
+              fontSize: '13.5px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              background: activeTab === 'investigadores' ? 'var(--c-primary-light)' : 'transparent',
+              color: activeTab === 'investigadores' ? 'var(--c-primary)' : 'var(--c-text-muted)',
+              border: activeTab === 'investigadores' ? '1px solid var(--c-primary-border)' : '1px solid transparent',
+            }}
+          >
+            🎓 Investigadores Registrados ({users.filter(u => u.role === 'student').length})
+          </button>
         </div>
       </div>
 
@@ -345,7 +365,7 @@ export function AdminDashboard() {
             </div>
 
           </div>
-        ) : (
+        ) : activeTab === 'evaluadores' ? (
           /* PESTAÑA EVALUADORES (CARGA DE TRABAJO) */
           <div className="admin-evaluators">
             {rows.map((row) => (
@@ -383,6 +403,73 @@ export function AdminDashboard() {
                 )}
               </div>
             ))}
+          </div>
+        ) : (
+          /* PESTAÑA INVESTIGADORES REGISTRADOS */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{
+              background: 'white',
+              borderRadius: '12px',
+              border: '1px solid var(--c-border)',
+              boxShadow: 'var(--shadow-sm)',
+              overflow: 'hidden'
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--c-border)' }}>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, color: '#475569' }}>Nombre</th>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, color: '#475569' }}>Correo institucional</th>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, color: '#475569' }}>Proyectos Iniciados</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const researchers = users.filter(u => u.role === 'student');
+                    if (researchers.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={3} style={{ padding: '24px', fontStyle: 'italic', color: '#64748b', textAlign: 'center' }}>
+                            No hay investigadores registrados en la plataforma.
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return researchers.map(researcher => {
+                      const docsCount = documentos.filter(d => d.investigadorId === researcher.id).length;
+                      return (
+                        <tr key={researcher.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 16px', fontWeight: 600, color: 'var(--c-text)' }}>
+                            {researcher.name}
+                          </td>
+                          <td style={{ padding: '14px 16px', color: 'var(--c-text-muted)' }}>
+                            {researcher.email}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            {docsCount > 0 ? (
+                              <button
+                                type="button"
+                                className="eval-btn eval-btn--sm eval-btn--primary"
+                                onClick={() => {
+                                  setSelectedResearcherForProjects(researcher);
+                                  setExpandedProjectId(null);
+                                }}
+                                style={{ fontWeight: 600, padding: '4px 12px', fontSize: '12px' }}
+                              >
+                                Ver {docsCount} {docsCount === 1 ? 'proyecto' : 'proyectos'}
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '12px', color: 'var(--c-text-subtle)', fontStyle: 'italic' }}>
+                                Sin proyectos
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -516,6 +603,148 @@ export function AdminDashboard() {
                 <button type="submit" className="eval-btn eval-btn--primary">Guardar Cambios</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal de Proyectos de un Investigador */}
+      {selectedResearcherForProjects && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setSelectedResearcherForProjects(null); }}>
+          <div className="modal" style={{ maxWidth: '650px', width: '100%', borderRadius: '12px' }}>
+            <div className="modal__header">
+              <h3 className="modal__title" style={{ fontWeight: 700 }}>
+                Proyectos de {selectedResearcherForProjects.name}
+              </h3>
+              <button className="modal__close" onClick={() => setSelectedResearcherForProjects(null)}>✕</button>
+            </div>
+            <div className="modal__body" style={{ maxHeight: '70vh', overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {(() => {
+                const projects = documentos.filter(d => d.investigadorId === selectedResearcherForProjects.id);
+                if (projects.length === 0) {
+                  return (
+                    <p style={{ fontStyle: 'italic', color: '#64748b', textAlign: 'center', margin: '20px 0' }}>
+                      Este investigador no tiene proyectos iniciados.
+                    </p>
+                  );
+                }
+                return projects.map((project) => {
+                  const isExpanded = expandedProjectId === project.id;
+                  const activeAsig = asignaciones.find(a => a.documentoId === project.id && a.active);
+                  const evaluator = activeAsig ? users.find(u => u.id === activeAsig.evaluadorId) : null;
+
+                  return (
+                    <div 
+                      key={project.id} 
+                      style={{ 
+                        background: '#f8fafc', 
+                        border: '1px solid #cbd5e1', 
+                        borderRadius: '8px', 
+                        overflow: 'hidden',
+                        transition: 'all 0.2s ease-in-out'
+                      }}
+                    >
+                      {/* Cabecera del Proyecto (Click para expandir) */}
+                      <div 
+                        onClick={() => setExpandedProjectId(isExpanded ? null : project.id)}
+                        style={{ 
+                          padding: '12px 16px', 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center', 
+                          cursor: 'pointer',
+                          background: isExpanded ? '#eff6ff' : '#f8fafc',
+                          borderBottom: isExpanded ? '1px solid #bfdbfe' : 'none'
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0, paddingRight: '12px', textAlign: 'left' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
+                            {project.codigo}
+                          </span>
+                          <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#1e293b', lineHeight: '1.3', display: 'block' }}>
+                            {project.tema}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                          {getEstadoBadge(project.estado)}
+                          <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="2" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round"
+                            style={{ 
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', 
+                              transition: 'transform 0.2s', 
+                              color: '#64748b' 
+                            }}
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </div>
+                      </div>
+
+                      {/* Cuerpo del Proyecto (Desplegable) */}
+                      {isExpanded && (
+                        <div style={{ padding: '16px', background: 'white', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '12.5px', borderTop: '1px solid #e2e8f0', textAlign: 'left' }}>
+                          <div>
+                            <h5 style={{ margin: '0 0 4px 0', fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: 700 }}>
+                              Descripción del Proyecto
+                            </h5>
+                            <p style={{ margin: 0, color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                              {project.descripcion || 'Sin descripción detallada.'}
+                            </p>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                            <div>
+                              <h5 style={{ margin: '0 0 4px 0', fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: 700 }}>
+                                Riesgo
+                              </h5>
+                              <span>{getRiesgoBadge(project.riesgoDeclarado)}</span>
+                            </div>
+                            <div>
+                              <h5 style={{ margin: '0 0 4px 0', fontSize: '11px', textTransform: 'uppercase', color: '#64748b', fontWeight: 700 }}>
+                                Evaluador Asignado
+                              </h5>
+                              <span style={{ fontWeight: 500, color: '#1e293b' }}>
+                                {evaluator ? evaluator.name : 'No asignado'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px', fontSize: '11px', color: '#94a3b8' }}>
+                            <span>Creado el: {new Date(project.createdAt).toLocaleDateString()}</span>
+                            <button
+                              type="button"
+                              className="eval-btn eval-btn--sm eval-btn--outline"
+                              onClick={() => {
+                                setSelectedResearcherForProjects(null);
+                                setEditingDoc(project);
+                                setEditTema(project.tema);
+                                setEditDescripcion(project.descripcion);
+                                setEditRiesgoDeclarado(project.riesgoDeclarado);
+                                setEditRiesgoConfirmado(project.riesgoConfirmado || 'none');
+                                setEditEstado(project.estado);
+                                const activeAsig = asignaciones.find(a => a.documentoId === project.id && a.active);
+                                setEditEvaluadorId(activeAsig ? activeAsig.evaluadorId : '');
+                              }}
+                              style={{ padding: '2px 8px', fontSize: '11px' }}
+                            >
+                              Editar Proyecto
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div className="modal__footer">
+              <button type="button" className="eval-btn eval-btn--outline" onClick={() => setSelectedResearcherForProjects(null)}>Cerrar</button>
+            </div>
           </div>
         </div>
       )}

@@ -303,18 +303,121 @@ interface CeishState {
 }
 
 // ============================================================================
+// STORE INITIAL STATE SEEDER
+// ============================================================================
+const generarEstadoInicial = () => {
+  let temp = {
+    anexosTemplates: [] as AnexoTemplate[],
+    tiposDocumento: [] as TipoDocumento[],
+    documentos: seedDocumentos(),
+    respuestasAnexos: [] as RespuestaAnexo[],
+    asignaciones: seedAsignaciones(),
+    escalamientos: [] as Escalamiento[],
+    notificaciones: [] as Notificacion[]
+  };
+
+  // 1. Acumular Anexos 1 a 9 del Investigador
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 1, 'Solicitud de Revisión Técnica', 'investigador', [
+    { texto: 'Título descriptivo del proyecto de investigación', tipo: 'texto-libre', orden: 1 },
+    { texto: 'Breve justificación e hipótesis de trabajo', tipo: 'texto-libre', orden: 2 }
+  ], 'anexo-1') } as any;
+
+  for (let i = 2; i <= 9; i++) {
+    temp = { ...temp, ...addAnexoTemplateToState(temp as any, i, `Anexo ${i} Formulario de Ficha Ética`, 'investigador', [
+      { texto: `Pregunta declaratoria de cumplimiento Anexo ${i}`, tipo: 'checklist', orden: 1 }
+    ], `anexo-${i}`) } as any;
+  }
+
+  // 2. Acumular Anexos del Evaluador (Estratificación y Evaluación)
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 27, 'Formato para Estratificación de Riesgos', 'evaluador', [
+    { texto: '1. ¿La investigación involucra procedimientos que puedan causar daño físico o psicológico directo al sujeto?', tipo: 'checklist', orden: 1 },
+    { texto: '2. ¿Se recolectan datos personales sensibles o información privada de carácter confidencial?', tipo: 'checklist', orden: 2 },
+    { texto: '3. ¿Se utilizan muestras biológicas humanas (sangre, tejidos, fluidos)?', tipo: 'checklist', orden: 3 },
+    { texto: '4. ¿Involucra poblaciones vulnerables (niños, personas con discapacidad, etc.)?', tipo: 'checklist', orden: 4 },
+    { texto: 'Justificación / Criterio final del revisor', tipo: 'texto-libre', orden: 5 }
+  ], 'anexo-27') } as any;
+
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 11, 'Formato de Carta de Exención (Sin Riesgo)', 'evaluador', [
+    { texto: 'Justificación técnica del cumplimiento de criterios de exención ética', tipo: 'texto-libre', orden: 1 },
+    { texto: 'Declaración formal de exención de revisión por el comité CEISH', tipo: 'checklist', orden: 2 }
+  ], 'anexo-11') } as any;
+
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 23, 'Declaración de Conflicto de Intereses', 'evaluador', [
+    { texto: 'Describa detalladamente la causa de su conflicto de interés con el proyecto o sus autores', tipo: 'texto-libre', orden: 1 },
+    { texto: 'Declaración juramentada de inhibición en el proceso de evaluación', tipo: 'checklist', orden: 2 }
+  ], 'anexo-23') } as any;
+
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 12, 'Check List de Evaluación de Proyecto', 'evaluador', [
+    { texto: 'A. Título de la investigación descriptivo y delimitado', tipo: 'checklist', orden: 1 },
+    { texto: 'B. Justificación teórica y empírica del problema de investigación', tipo: 'checklist', orden: 2 },
+    { texto: 'C. Objetivos específicos coherentes con el objetivo general', tipo: 'checklist', orden: 3 },
+    { texto: 'D. Diseño metodológico adecuado y detallado', tipo: 'checklist', orden: 4 },
+    { texto: 'E. Consideraciones éticas aplicables debidamente fundamentadas', tipo: 'checklist', orden: 5 },
+    { texto: 'F. Observaciones generales detalladas', tipo: 'texto-libre', orden: 6 }
+  ], 'anexo-12') } as any;
+
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 13, 'Formato para emisión de resoluciones de aprobación', 'evaluador', [
+    { texto: 'Declaración formal de Aprobación Ética y Metodológica', tipo: 'checklist', orden: 1 },
+    { texto: 'Términos y condiciones de la aprobación del proyecto', tipo: 'texto-libre', orden: 2 }
+  ], 'anexo-13') } as any;
+
+  temp = { ...temp, ...addAnexoTemplateToState(temp as any, 26, 'Resolución de suspensión o revocatoria', 'evaluador', [
+    { texto: 'Motivos de la suspensión/revocatoria (vencimiento de plazos, faltas éticas, etc.)', tipo: 'texto-libre', orden: 1 },
+    { texto: 'Declaración formal de suspensión de la validez del certificado aprobatorio', tipo: 'checklist', orden: 2 }
+  ], 'anexo-26') } as any;
+
+  // 3. Crear el Tipo de Documento "Investigación" asociando las plantillas dinámicas
+  temp = { ...temp, ...addTipoDocumentoToState(temp as any, 'Investigación', [
+    {
+      id: 'sec-creacion',
+      nombre: 'Etapa 1: Creación de Investigación',
+      orden: 1,
+      anexos: [
+        { anexoTemplateId: 'anexo-1', obligatorio: true },
+        { anexoTemplateId: 'anexo-2', obligatorio: true },
+        { anexoTemplateId: 'anexo-3', obligatorio: true },
+        { anexoTemplateId: 'anexo-4', obligatorio: true },
+        { anexoTemplateId: 'anexo-5', obligatorio: true },
+        { anexoTemplateId: 'anexo-6', obligatorio: true },
+        { anexoTemplateId: 'anexo-7', obligatorio: true },
+        { anexoTemplateId: 'anexo-8', obligatorio: true },
+        { anexoTemplateId: 'anexo-9', obligatorio: true }
+      ]
+    },
+    {
+      id: 'sec-estratificacion',
+      nombre: 'Etapa 2: Estratificación',
+      orden: 2,
+      anexos: [
+        { anexoTemplateId: 'anexo-27', obligatorio: true },
+        { anexoTemplateId: 'anexo-11', obligatorio: true },
+        { anexoTemplateId: 'anexo-23', obligatorio: false }
+      ]
+    },
+    {
+      id: 'sec-evaluacion',
+      nombre: 'Etapa 3: Evaluación',
+      orden: 3,
+      anexos: [
+        { anexoTemplateId: 'anexo-12', obligatorio: true },
+        { anexoTemplateId: 'anexo-13', obligatorio: true },
+        { anexoTemplateId: 'anexo-26', obligatorio: false }
+      ]
+    }
+  ], 'tipo-investigacion') } as any;
+
+  return temp;
+};
+
+const estadoInicialSemilla = generarEstadoInicial();
+
+// ============================================================================
 // STORE IMPLEMENTATION
 // ============================================================================
 export const useCeishStore = create<CeishState>()(
   persist(
     (set) => ({
-      anexosTemplates: [],
-      tiposDocumento: [],
-      documentos: [],
-      respuestasAnexos: [],
-      asignaciones: [],
-      escalamientos: [],
-      notificaciones: [],
+      ...estadoInicialSemilla,
 
       // CRUD Anexos
       crearAnexoTemplate: (numero, nombre, rol, preguntas, customId) => set((state) => ({
@@ -1157,113 +1260,29 @@ export const useCeishStore = create<CeishState>()(
       }),
 
       // Orquestación limpia del Seed mediante un único set() final
-      resetearDatos: () => set((state) => {
-        let tempState: CeishState = {
-          ...state,
-          anexosTemplates: [],
-          tiposDocumento: [],
-          documentos: seedDocumentos(),
-          respuestasAnexos: [],
-          asignaciones: seedAsignaciones(),
-          escalamientos: [],
-          notificaciones: []
-        };
-
-        // 1. Acumular Anexos 1 a 9 del Investigador
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 1, 'Solicitud de Revisión Técnica', 'investigador', [
-          { texto: 'Título descriptivo del proyecto de investigación', tipo: 'texto-libre', orden: 1 },
-          { texto: 'Breve justificación e hipótesis de trabajo', tipo: 'texto-libre', orden: 2 }
-        ], 'anexo-1') } as CeishState;
-
-        for (let i = 2; i <= 9; i++) {
-          tempState = { ...tempState, ...addAnexoTemplateToState(tempState, i, `Anexo ${i} Formulario de Ficha Ética`, 'investigador', [
-            { texto: `Pregunta declaratoria de cumplimiento Anexo ${i}`, tipo: 'checklist', orden: 1 }
-          ], `anexo-${i}`) } as CeishState;
-        }
-
-        // 2. Acumular Anexos del Evaluador (Estratificación y Evaluación)
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 27, 'Formato para Estratificación de Riesgos', 'evaluador', [
-          { texto: '1. ¿La investigación involucra procedimientos que puedan causar daño físico o psicológico directo al sujeto?', tipo: 'checklist', orden: 1 },
-          { texto: '2. ¿Se recolectan datos personales sensibles o información privada de carácter confidencial?', tipo: 'checklist', orden: 2 },
-          { texto: '3. ¿Se utilizan muestras biológicas humanas (sangre, tejidos, fluidos)?', tipo: 'checklist', orden: 3 },
-          { texto: '4. ¿Involucra poblaciones vulnerables (niños, personas con discapacidad, etc.)?', tipo: 'checklist', orden: 4 },
-          { texto: 'Justificación / Criterio final del revisor', tipo: 'texto-libre', orden: 5 }
-        ], 'anexo-27') } as CeishState;
-
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 11, 'Formato de Carta de Exención (Sin Riesgo)', 'evaluador', [
-          { texto: 'Justificación técnica del cumplimiento de criterios de exención ética', tipo: 'texto-libre', orden: 1 },
-          { texto: 'Declaración formal de exención de revisión por el comité CEISH', tipo: 'checklist', orden: 2 }
-        ], 'anexo-11') } as CeishState;
-
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 23, 'Declaración de Conflicto de Intereses', 'evaluador', [
-          { texto: 'Describa detalladamente la causa de su conflicto de interés con el proyecto o sus autores', tipo: 'texto-libre', orden: 1 },
-          { texto: 'Declaración juramentada de inhibición en el proceso de evaluación', tipo: 'checklist', orden: 2 }
-        ], 'anexo-23') } as CeishState;
-
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 12, 'Check List de Evaluación de Proyecto', 'evaluador', [
-          { texto: 'A. Título de la investigación descriptivo y delimitado', tipo: 'checklist', orden: 1 },
-          { texto: 'B. Justificación teórica y empírica del problema de investigación', tipo: 'checklist', orden: 2 },
-          { texto: 'C. Objetivos específicos coherentes con el objetivo general', tipo: 'checklist', orden: 3 },
-          { texto: 'D. Diseño metodológico adecuado y detallado', tipo: 'checklist', orden: 4 },
-          { texto: 'E. Consideraciones éticas aplicables debidamente fundamentadas', tipo: 'checklist', orden: 5 },
-          { texto: 'F. Observaciones generales detalladas', tipo: 'texto-libre', orden: 6 }
-        ], 'anexo-12') } as CeishState;
-
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 13, 'Formato para emisión de resoluciones de aprobación', 'evaluador', [
-          { texto: 'Declaración formal de Aprobación Ética y Metodológica', tipo: 'checklist', orden: 1 },
-          { texto: 'Términos y condiciones de la aprobación del proyecto', tipo: 'texto-libre', orden: 2 }
-        ], 'anexo-13') } as CeishState;
-
-        tempState = { ...tempState, ...addAnexoTemplateToState(tempState, 26, 'Resolución de suspensión o revocatoria', 'evaluador', [
-          { texto: 'Motivos de la suspensión/revocatoria (vencimiento de plazos, faltas éticas, etc.)', tipo: 'texto-libre', orden: 1 },
-          { texto: 'Declaración formal de suspensión de la validez del certificado aprobatorio', tipo: 'checklist', orden: 2 }
-        ], 'anexo-26') } as CeishState;
-
-        // 3. Crear el Tipo de Documento "Investigación" asociando las plantillas dinámicas
-        tempState = { ...tempState, ...addTipoDocumentoToState(tempState, 'Investigación', [
-          {
-            id: 'sec-creacion',
-            nombre: 'Etapa 1: Creación de Investigación',
-            orden: 1,
-            anexos: [
-              { anexoTemplateId: 'anexo-1', obligatorio: true },
-              { anexoTemplateId: 'anexo-2', obligatorio: true },
-              { anexoTemplateId: 'anexo-3', obligatorio: true },
-              { anexoTemplateId: 'anexo-4', obligatorio: true },
-              { anexoTemplateId: 'anexo-5', obligatorio: true },
-              { anexoTemplateId: 'anexo-6', obligatorio: true },
-              { anexoTemplateId: 'anexo-7', obligatorio: true },
-              { anexoTemplateId: 'anexo-8', obligatorio: true },
-              { anexoTemplateId: 'anexo-9', obligatorio: true }
-            ]
-          },
-          {
-            id: 'sec-estratificacion',
-            nombre: 'Etapa 2: Estratificación',
-            orden: 2,
-            anexos: [
-              { anexoTemplateId: 'anexo-27', obligatorio: true },
-              { anexoTemplateId: 'anexo-11', obligatorio: true },
-              { anexoTemplateId: 'anexo-23', obligatorio: false }
-            ]
-          },
-          {
-            id: 'sec-evaluacion',
-            nombre: 'Etapa 3: Evaluación',
-            orden: 3,
-            anexos: [
-              { anexoTemplateId: 'anexo-12', obligatorio: true },
-              { anexoTemplateId: 'anexo-13', obligatorio: true },
-              { anexoTemplateId: 'anexo-26', obligatorio: false }
-            ]
-          }
-        ], 'tipo-investigacion') } as CeishState;
-
-        return tempState;
-      })
+      resetearDatos: () => set((state) => ({
+        ...state,
+        ...generarEstadoInicial()
+      }))
     }),
     {
       name: 'ceish-prototype-storage',
+      merge: (persistedState: any, currentState) => {
+        const merged = { ...currentState, ...persistedState };
+        if (!merged.anexosTemplates || merged.anexosTemplates.length === 0) {
+          merged.anexosTemplates = currentState.anexosTemplates;
+        }
+        if (!merged.tiposDocumento || merged.tiposDocumento.length === 0) {
+          merged.tiposDocumento = currentState.tiposDocumento;
+        }
+        if (!merged.documentos || merged.documentos.length === 0) {
+          merged.documentos = currentState.documentos;
+        }
+        if (!merged.asignaciones || merged.asignaciones.length === 0) {
+          merged.asignaciones = currentState.asignaciones;
+        }
+        return merged;
+      }
     }
   )
 );
