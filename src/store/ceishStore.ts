@@ -225,7 +225,9 @@ interface CeishState {
     investigadorId: string,
     investigadorNombre: string,
     documentName: string,
-    documentPath: string
+    documentPath: string,
+    customId?: string,
+    customVersionId?: string
   ) => void;
 
   solicitarRevision: (documentoId: string, solicitanteNombre: string) => void;
@@ -423,20 +425,77 @@ export const useCeishStore = create<CeishState>()(
         investigadorId,
         investigadorNombre,
         documentName,
-        documentPath
+        documentPath,
+        customId,
+        customVersionId
       ) => set((state) => {
-        const id = generateUUID();
+        const id = customId || generateUUID();
         const correlativo = String(state.documentos.length + 1).padStart(4, '0');
         const codigo = `CEISH-2026-${correlativo}`;
         const timestamp = new Date().toISOString();
 
         const nuevaVersion: VersionArchivo = {
-          id: generateUUID(),
+          id: customVersionId || generateUUID(),
           documentName,
           documentPath,
           comment: 'Documento inicial cargado al registrar el trámite.',
           uploadedAt: timestamp
         };
+
+        const tipoDoc = state.tiposDocumento.find(t => t.id === tipoDocumentoId);
+        const seccionAsignada = tipoDoc?.secciones[1]; // Estratificación
+
+        const evaluadoresSistema = [
+          { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo', cedula: 'b0000000-0000-0000-0000-000000000001' },
+          { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH', cedula: 'b0000000-0000-0000-0000-000000000002' },
+          { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia', cedula: 'b0000000-0000-0000-0000-000000000003' }
+        ];
+
+        const exclusionesCopia = [...miembrosCeishDeclarados];
+        autores.forEach(autor => {
+          const evalCoincidente = evaluadoresSistema.find(ev => ev.cedula === autor.cedula);
+          if (evalCoincidente && !exclusionesCopia.includes(evalCoincidente.id)) {
+            exclusionesCopia.push(evalCoincidente.id);
+          }
+        });
+
+        const evaluadoresDisponibles = evaluadoresSistema.filter(
+          ev => !exclusionesCopia.includes(ev.id)
+        );
+
+        let asignacionesActualizadas = [...state.asignaciones];
+        let estadoInicial: DocumentoEstado = 'creada';
+        let historialEstados = [
+          {
+            estado: 'creada' as DocumentoEstado,
+            changedAt: timestamp,
+            changedBy: investigadorNombre,
+            comment: 'Trámite registrado e iniciado.'
+          }
+        ];
+
+        if (seccionAsignada && evaluadoresDisponibles.length > 0) {
+          const randomIdx = Math.floor(Math.random() * evaluadoresDisponibles.length);
+          const evaluadorSeleccionado = evaluadoresDisponibles[randomIdx];
+
+          const nuevaAsignacion: AsignacionCEISH = {
+            id: generateUUID(),
+            documentoId: id,
+            evaluadorId: evaluadorSeleccionado.id,
+            seccionId: seccionAsignada.id,
+            assignedAt: timestamp,
+            active: true
+          };
+
+          asignacionesActualizadas.push(nuevaAsignacion);
+          estadoInicial = 'estratificacion';
+          historialEstados.push({
+            estado: 'estratificacion' as DocumentoEstado,
+            changedAt: timestamp,
+            changedBy: 'Sistema CEISH',
+            comment: 'Asignación ciega automatizada tras completar Etapa 1.'
+          });
+        }
 
         const nuevoDoc: Documento = {
           id,
@@ -447,22 +506,16 @@ export const useCeishStore = create<CeishState>()(
           investigadorId,
           autores,
           riesgoDeclarado,
-          miembrosCeishDeclarados,
-          estado: 'creada',
+          miembrosCeishDeclarados: exclusionesCopia,
+          estado: estadoInicial,
           versionesArchivo: [nuevaVersion],
-          historialEstados: [
-            {
-              estado: 'creada',
-              changedAt: timestamp,
-              changedBy: investigadorNombre,
-              comment: 'Trámite registrado e iniciado.'
-            }
-          ],
+          historialEstados,
           createdAt: timestamp
         };
 
         return {
-          documentos: [...state.documentos, nuevoDoc]
+          documentos: [...state.documentos, nuevoDoc],
+          asignaciones: asignacionesActualizadas
         };
       }),
 

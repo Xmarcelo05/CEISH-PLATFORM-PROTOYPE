@@ -79,7 +79,6 @@ const ADMIN_NAV: NavItem[] = [
   },
 ];
 
-const ROLE_NAV = { student: STUDENT_NAV, evaluator: EVALUATOR_NAV, admin: ADMIN_NAV };
 const ROLE_LABEL = { student: 'Investigador', evaluator: 'Revisor', admin: 'Administrador' };
 
 export function AppShell() {
@@ -96,7 +95,15 @@ export function AppShell() {
     return null;
   }
 
-  const navItems = ROLE_NAV[currentUser.role];
+  // Permisos y navegación acumulativa por roles (Investigador < Revisor < Administrador)
+  let navItems: NavItem[] = [];
+  if (currentUser.role === 'student') {
+    navItems = [...STUDENT_NAV];
+  } else if (currentUser.role === 'evaluator') {
+    navItems = [...STUDENT_NAV, ...EVALUATOR_NAV];
+  } else if (currentUser.role === 'admin') {
+    navItems = [...STUDENT_NAV, ...EVALUATOR_NAV, ...ADMIN_NAV];
+  }
 
   return (
     <div className="shell">

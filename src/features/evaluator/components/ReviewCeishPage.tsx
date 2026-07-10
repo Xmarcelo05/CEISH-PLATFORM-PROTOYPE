@@ -13,7 +13,7 @@ import type {
 import '../../evaluation/evaluation.css';
 import '../evaluator.css';
 
-type Tab = 'info' | 'evaluacion-dinamica';
+type Tab = 'info' | 'evaluacion-dinamica' | 'investigador-llenado';
 
 export function ReviewCeishPage() {
   const { investigacionId = '' } = useParams<{ investigacionId: string }>();
@@ -481,9 +481,10 @@ export function ReviewCeishPage() {
   const rondasPreviasA12 = getHistorialRondasA12();
 
   return (
-    <div className="eval-page">
-      {/* 1. Visor de PDF (Panel Izquierdo) */}
-      <div className="eval-left-panel">
+    <div className="eval-layout">
+      <div className="eval-body">
+        {/* 1. Visor de PDF (Panel Izquierdo) */}
+        <main className="eval-pdf-panel">
         <div className="eval-left-header">
           <span>Expediente: <strong>{documento.codigo}</strong></span>
           <span>Pág. {pdf.currentPage} de {pdf.totalPages || '?'}</span>
@@ -517,16 +518,22 @@ export function ReviewCeishPage() {
             </div>
           )}
         </div>
-      </div>
+        </main>
 
-      {/* 2. Panel de Evaluación (Panel Derecho) */}
-      <div className="eval-right-panel">
+        {/* 2. Panel de Evaluación (Panel Derecho) */}
+        <aside className="criteria-panel" style={{ borderLeft: '2px solid #cbd5e1', boxShadow: '-2px 0 10px rgba(0,0,0,0.05)' }}>
         <div className="eval-tabs">
           <button 
             className={`eval-tabs__btn ${activeTab === 'evaluacion-dinamica' ? 'active' : ''}`}
             onClick={() => setActiveTab('evaluacion-dinamica')}
           >
             Formulario ({activeSeccion.nombre})
+          </button>
+          <button 
+            className={`eval-tabs__btn ${activeTab === 'investigador-llenado' ? 'active' : ''}`}
+            onClick={() => setActiveTab('investigador-llenado')}
+          >
+            Llenado Investigador (Etapa 1)
           </button>
           <button 
             className={`eval-tabs__btn ${activeTab === 'info' ? 'active' : ''}`}
@@ -536,7 +543,7 @@ export function ReviewCeishPage() {
           </button>
         </div>
 
-        <div className="eval-right-body">
+        <div className="eval-right-body" style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {activeTab === 'info' ? (
             <div className="eval-info-view" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
@@ -555,6 +562,62 @@ export function ReviewCeishPage() {
                   Las identidades de los autores y co-autores del protocolo están enmascaradas para garantizar imparcialidad científica y metodológica.
                 </p>
               </div>
+            </div>
+          ) : activeTab === 'investigador-llenado' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '12px', borderRadius: '6px' }}>
+                <h4 style={{ margin: 0, fontSize: '13px', color: '#1e3a8a', fontWeight: 700 }}>Respuestas de Inicio del Investigador</h4>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#1e40af' }}>
+                  A continuación se presentan los campos y anexos obligatorios que completó el investigador durante la creación de este trámite.
+                </p>
+              </div>
+
+              {(() => {
+                const firstSection = tipoDoc.secciones[0];
+                const respuestasInvestigador = respuestasAnexos.filter(
+                  r => r.documentoId === documento.id && r.seccionId === (firstSection?.id || 'sec-creacion')
+                );
+
+                if (respuestasInvestigador.length === 0) {
+                  return (
+                    <p style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
+                      No se encontraron respuestas registradas para la Etapa 1 de este proyecto.
+                    </p>
+                  );
+                }
+
+                return respuestasInvestigador.map(resp => {
+                  const template = anexosTemplates.find(t => t.id === resp.anexoTemplateId);
+                  if (!template) return null;
+
+                  return (
+                    <div key={resp.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
+                      <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
+                        Anexo {template.numero}: {template.nombre}
+                      </h5>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {resp.valores.map(val => {
+                          const pregunta = resp.snapshotPreguntas.find(p => p.id === val.campoId);
+                          if (!pregunta) return null;
+
+                          return (
+                            <div key={val.campoId} style={{ fontSize: '12px' }}>
+                              <p style={{ margin: 0, fontWeight: 600, color: '#475569' }}>{pregunta.texto}</p>
+                              <p style={{ margin: '2px 0 0 0', color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', whiteSpace: 'pre-wrap' }}>
+                                {typeof val.valor === 'boolean' 
+                                  ? (val.valor ? 'Sí' : 'No') 
+                                  : (val.valor ? String(val.valor) : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>)
+                                }
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           ) : (
             <div className="eval-dynamic-flow" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -827,6 +890,7 @@ export function ReviewCeishPage() {
             </div>
           )}
         </div>
+        </aside>
       </div>
 
       {/* 3. MODALES ADICIONALES DE CONTROL DE FLUJO */}
