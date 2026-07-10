@@ -863,3 +863,41 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---- Evaluation Tabs and Buttons ---- */
+.eval-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--c-border);
+  margin-bottom: 12px;
+  background: var(--c-surface);
+  padding: 4px 4px 0 4px;
+}
+
+.eval-tabs__btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  outline: none;
+}
+
+.eval-tabs__btn:hover {
+  color: var(--c-text);
+  background: var(--c-surface-2);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+
+.eval-tabs__btn.active {
+  color: var(--c-primary);
+  border-bottom-color: var(--c-primary);
+  background: var(--c-primary-light);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}

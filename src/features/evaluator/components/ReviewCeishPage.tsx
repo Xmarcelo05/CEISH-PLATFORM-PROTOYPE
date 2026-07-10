@@ -57,6 +57,12 @@ export function ReviewCeishPage() {
 
   const [nuevoRiesgoEleccion, setNuevoRiesgoEleccion] = useState<RiesgoTipo>('riesgo-minimo');
 
+  // Modal de revisión de Anexos del Investigador
+  const [showInvestigadorModal, setShowInvestigadorModal] = useState(false);
+  const [selectedInvestigadorAnexoId, setSelectedInvestigadorAnexoId] = useState<string | null>(null);
+  const [isEditingInvestigadorAnexos, setIsEditingInvestigadorAnexos] = useState(false);
+  const [investigadorFormState, setInvestigadorFormState] = useState<Record<string, any>>({});
+
   // Visor PDF
   const pdf = usePDFViewer();
   const { loadFile } = pdf;
@@ -106,6 +112,28 @@ export function ReviewCeishPage() {
     if (documento.estado === 'revision-tecnica') return s.id === 'sec-evaluacion';
     return false;
   }) || tipoDoc.secciones[1]; // Fallback a la segunda sección por seguridad
+
+  // Cargar respuestas de los anexos del investigador al formulario de edición local
+  useEffect(() => {
+    if (selectedInvestigadorAnexoId && latestVersion && documento) {
+      const respGuardada = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === selectedInvestigadorAnexoId && r.versionArchivoId === latestVersion.id
+      );
+
+      const iniciales: Record<string, any> = {};
+      if (respGuardada) {
+        respGuardada.valores.forEach(v => {
+          iniciales[v.campoId] = v.valor;
+        });
+      } else {
+        const template = anexosTemplates.find(t => t.id === selectedInvestigadorAnexoId);
+        template?.preguntas.forEach(p => {
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+        });
+      }
+      setInvestigadorFormState(iniciales);
+    }
+  }, [selectedInvestigadorAnexoId, latestVersion?.id, documento?.id, respuestasAnexos, anexosTemplates]);
 
   // Autoseleccionar el primer anexo asignado a la sección
   if (!activeAnexoId && activeSeccion && activeSeccion.anexos.length > 0) {
@@ -564,92 +592,38 @@ export function ReviewCeishPage() {
               </div>
             </div>
           ) : activeTab === 'investigador-llenado' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '12px', borderRadius: '6px' }}>
-                <h4 style={{ margin: 0, fontSize: '13px', color: '#1e3a8a', fontWeight: 700 }}>Respuestas de Inicio del Investigador</h4>
-                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#1e40af' }}>
-                  A continuación se presentan los campos y anexos obligatorios que completó el investigador durante la creación de este trámite.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', justifyContent: 'center', padding: '20px 0' }}>
+              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '16px', borderRadius: '8px', width: '100%', textAlign: 'center' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '8px', display: 'inline-block' }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '14px', color: '#1e3a8a', fontWeight: 700 }}>Revisión de Anexos del Investigador</h4>
+                <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#1e40af', lineHeight: '1.4' }}>
+                  Acceda a los anexos obligatorios llenados por el investigador (Etapa 1: Creación) para auditar y, si es necesario, editar sus respuestas.
                 </p>
+                <button
+                  type="button"
+                  className="eval-btn eval-btn--primary"
+                  onClick={() => {
+                    const firstSection = tipoDoc.secciones[0];
+                    if (firstSection && firstSection.anexos.length > 0) {
+                      setSelectedInvestigadorAnexoId(firstSection.anexos[0].anexoTemplateId);
+                    }
+                    setShowInvestigadorModal(true);
+                  }}
+                  style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '13px', fontWeight: 600 }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  Revisar Anexos del Investigador
+                </button>
               </div>
-
-              {(() => {
-                const firstSection = tipoDoc.secciones[0];
-                const respuestasInvestigador = respuestasAnexos.filter(
-                  r => r.documentoId === documento.id && r.seccionId === (firstSection?.id || 'sec-creacion')
-                );
-
-                if (respuestasInvestigador.length === 0) {
-                  return (
-                    <p style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
-                      No se encontraron respuestas registradas para la Etapa 1 de este proyecto.
-                    </p>
-                  );
-                }
-
-                return respuestasInvestigador.map(resp => {
-                  const template = anexosTemplates.find(t => t.id === resp.anexoTemplateId);
-                  if (!template) return null;
-
-                  return (
-                    <div key={resp.id} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
-                      <h5 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: '#1e293b', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
-                        Anexo {template.numero}: {template.nombre}
-                      </h5>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {resp.valores.map(val => {
-                          const pregunta = resp.snapshotPreguntas.find(p => p.id === val.campoId);
-                          if (!pregunta) return null;
-
-                          if (pregunta.tipo === 'archivo') {
-                            return (
-                              <div key={val.campoId} style={{ fontSize: '12px' }}>
-                                <p style={{ margin: 0, fontWeight: 600, color: '#475569' }}>{pregunta.texto}</p>
-                                {val.valor?.documentName ? (
-                                  <div style={{ marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1' }}>
-                                    <span>📎 {val.valor.documentName}</span>
-                                    <button
-                                      type="button"
-                                      className="eval-btn eval-btn--outline"
-                                      style={{ padding: '2px 8px', fontSize: '10.5px' }}
-                                      onClick={() => {
-                                        const fileObj = ceishFileCache[val.valor.documentPath];
-                                        if (fileObj) {
-                                          window.open(URL.createObjectURL(fileObj), '_blank', 'noopener,noreferrer');
-                                        } else {
-                                          window.alert('Archivo no disponible tras recargar la sesión.');
-                                        }
-                                      }}
-                                    >
-                                      Ver
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <p style={{ margin: '2px 0 0 0', color: '#94a3b8', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1' }}>
-                                    <em>Sin archivo adjunto</em>
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div key={val.campoId} style={{ fontSize: '12px' }}>
-                              <p style={{ margin: 0, fontWeight: 600, color: '#475569' }}>{pregunta.texto}</p>
-                              <p style={{ margin: '2px 0 0 0', color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', whiteSpace: 'pre-wrap' }}>
-                                {typeof val.valor === 'boolean'
-                                  ? (val.valor ? 'Sí' : 'No')
-                                  : (val.valor ? String(val.valor) : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>)
-                                }
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
             </div>
           ) : (
             <div className="eval-dynamic-flow" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1016,6 +990,268 @@ export function ReviewCeishPage() {
               <button className="eval-btn eval-btn--outline" onClick={() => setShowEscalarModal(false)}>Cancelar</button>
               <button className="eval-btn eval-btn--primary" onClick={handleEscalarAdmin} disabled={!escalamientoComentario.trim()}>
                 Escalar caso
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de revisión de Anexos del Investigador */}
+      {showInvestigadorModal && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !isEditingInvestigadorAnexos) { setIsEditingInvestigadorAnexos(false); setShowInvestigadorModal(false); } }}>
+          <div className="modal" style={{ maxWidth: '850px', width: '90%' }}>
+            <div className="modal__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px' }}>
+              <h3 className="modal__title" style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1e293b' }}>
+                Revisión de Anexos del Investigador (Etapa 1)
+              </h3>
+              <button 
+                type="button" 
+                className="modal__close" 
+                onClick={() => {
+                  if (isEditingInvestigadorAnexos && !window.confirm('Hay cambios sin guardar. ¿Desea cerrar de todas formas?')) return;
+                  setIsEditingInvestigadorAnexos(false);
+                  setShowInvestigadorModal(false);
+                }} 
+                aria-label="Cerrar"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+              {/* Tabs para seleccionar el anexo */}
+              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+                {(() => {
+                  const firstSection = tipoDoc.secciones[0];
+                  if (!firstSection) return null;
+
+                  return firstSection.anexos.map(an => {
+                    const temp = anexosTemplates.find(t => t.id === an.anexoTemplateId);
+                    if (!temp) return null;
+
+                    return (
+                      <button
+                        key={temp.id}
+                        type="button"
+                        className={`eval-tabs__btn ${selectedInvestigadorAnexoId === temp.id ? 'active' : ''}`}
+                        onClick={() => {
+                          if (isEditingInvestigadorAnexos && !window.confirm('Hay cambios sin guardar en el anexo actual. ¿Desea cambiar de pestaña y perder los cambios?')) return;
+                          setSelectedInvestigadorAnexoId(temp.id);
+                          setIsEditingInvestigadorAnexos(false);
+                        }}
+                        style={{ fontSize: '12px', padding: '6px 12px', flexShrink: 0 }}
+                      >
+                        Anexo {temp.numero}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+
+              {/* Contenido del anexo seleccionado */}
+              {selectedInvestigadorAnexoId && (() => {
+                const template = anexosTemplates.find(t => t.id === selectedInvestigadorAnexoId);
+                if (!template) return null;
+
+                const firstSection = tipoDoc.secciones[0];
+                const resp = respuestasAnexos.find(
+                  r => r.documentoId === documento.id && r.anexoTemplateId === selectedInvestigadorAnexoId && r.versionArchivoId === latestVersion?.id
+                );
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>
+                        Anexo {template.numero}: {template.nombre}
+                      </h4>
+                      
+                      {/* Botón para habilitar la edición */}
+                      {!isEditingInvestigadorAnexos ? (
+                        <button
+                          type="button"
+                          className="eval-btn eval-btn--outline"
+                          onClick={() => {
+                            // Cargar datos a la edición local por si acaso
+                            const iniciales: Record<string, any> = {};
+                            if (resp) {
+                              resp.valores.forEach(v => {
+                                iniciales[v.campoId] = v.valor;
+                              });
+                            } else {
+                              template.preguntas.forEach(p => {
+                                iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+                              });
+                            }
+                            setInvestigadorFormState(iniciales);
+                            setIsEditingInvestigadorAnexos(true);
+                          }}
+                          style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" />
+                          </svg>
+                          Habilitar Edición
+                        </button>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="eval-btn eval-btn--outline"
+                            onClick={() => {
+                              setIsEditingInvestigadorAnexos(false);
+                            }}
+                            style={{ fontSize: '12px', padding: '6px 12px' }}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            className="eval-btn eval-btn--primary"
+                            onClick={() => {
+                              const valores: ValorCampo[] = Object.keys(investigadorFormState).map(key => ({
+                                campoId: key,
+                                valor: investigadorFormState[key]
+                              }));
+
+                              guardarRespuestaAnexo({
+                                anexoTemplateId: template.id,
+                                documentoId: documento.id,
+                                seccionId: firstSection?.id || 'sec-creacion',
+                                versionArchivoId: latestVersion?.id || '',
+                                emitidoPorId: resp ? resp.emitidoPorId : currentUser.id,
+                                emitidoPorNombre: resp ? resp.emitidoPorNombre : currentUser.name,
+                                valores,
+                                comentariosAnotados: resp ? resp.comentariosAnotados : []
+                              });
+
+                              setIsEditingInvestigadorAnexos(false);
+                              window.alert('Cambios guardados con éxito.');
+                            }}
+                            style={{ fontSize: '12px', padding: '6px 12px' }}
+                          >
+                            Guardar Cambios
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {template.preguntas.map((p) => {
+                        const currentVal = investigadorFormState[p.id];
+
+                        return (
+                          <div key={p.id} style={{ background: 'white', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                            {p.descripcionContexto && (
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '2px', display: 'block' }}>
+                                [{p.descripcionContexto}]
+                              </span>
+                            )}
+                            <p style={{ margin: '0 0 8px 0', fontSize: '12.5px', fontWeight: 600, color: '#475569', lineHeight: '1.4' }}>{p.texto}</p>
+
+                            {isEditingInvestigadorAnexos ? (
+                              // RENDERIZADO EDICIÓN HABILITADA
+                              p.tipo === 'texto-libre' ? (
+                                <textarea
+                                  className="form-input"
+                                  rows={3}
+                                  value={currentVal || ''}
+                                  onChange={(e) => setInvestigadorFormState(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '13px' }}
+                                />
+                              ) : p.tipo === 'archivo' ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <input
+                                    type="file"
+                                    accept=".pdf,application/pdf,image/*"
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0] || null;
+                                      if (!f) return;
+                                      const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+                                      const isImage = f.type.startsWith('image/');
+                                      if (!isPdf && !isImage) {
+                                        window.alert('Solo se permiten archivos en formato PDF o imagen.');
+                                        return;
+                                      }
+                                      const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                                      ceishFileCache[fileKey] = f;
+                                      setInvestigadorFormState(prev => ({ ...prev, [p.id]: { documentName: f.name, documentPath: fileKey } }));
+                                    }}
+                                    style={{ fontSize: '12px' }}
+                                  />
+                                  {currentVal?.documentName && (
+                                    <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                                      ✓ Archivo seleccionado: {currentVal.documentName}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!currentVal}
+                                    onChange={(e) => setInvestigadorFormState(prev => ({ ...prev, [p.id]: e.target.checked }))}
+                                  />
+                                  <span style={{ fontSize: '12.5px' }}>Conforme</span>
+                                </label>
+                              )
+                            ) : (
+                              // RENDERIZADO SOLO LECTURA
+                              p.tipo === 'archivo' ? (
+                                currentVal?.documentName ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', fontSize: '12px' }}>
+                                    <span>📎 {currentVal.documentName}</span>
+                                    <button
+                                      type="button"
+                                      className="eval-btn eval-btn--outline"
+                                      style={{ padding: '2px 8px', fontSize: '10.5px' }}
+                                      onClick={() => {
+                                        const fileObj = ceishFileCache[currentVal.documentPath];
+                                        if (fileObj) {
+                                          window.open(URL.createObjectURL(fileObj), '_blank', 'noopener,noreferrer');
+                                        } else {
+                                          window.alert('Archivo no disponible en la sesión activa.');
+                                        }
+                                      }}
+                                    >
+                                      Ver
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <p style={{ margin: 0, color: '#94a3b8', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', fontSize: '12px' }}>
+                                    <em>Sin archivo adjunto</em>
+                                  </p>
+                                )
+                              ) : (
+                                <p style={{ margin: 0, color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', whiteSpace: 'pre-wrap', fontSize: '13px' }}>
+                                  {typeof currentVal === 'boolean'
+                                    ? (currentVal ? 'Sí (Conforme)' : 'No')
+                                    : (currentVal ? String(currentVal) : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>)
+                                  }
+                                </p>
+                              )
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="modal__footer" style={{ borderTop: '1px solid #cbd5e1', paddingTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button"
+                className="eval-btn eval-btn--outline" 
+                onClick={() => {
+                  if (isEditingInvestigadorAnexos && !window.confirm('Hay cambios sin guardar. ¿Desea cerrar de todas formas?')) return;
+                  setIsEditingInvestigadorAnexos(false);
+                  setShowInvestigadorModal(false);
+                }}
+              >
+                Cerrar Ventana
               </button>
             </div>
           </div>
