@@ -9,6 +9,7 @@ import type {
   DocumentoEstado,
   VersionArchivo,
   Pregunta,
+  CampoTipo,
   Seccion,
   TipoDocumento,
   AnexoAsignado,
@@ -52,6 +53,85 @@ const buildNotificaciones = (
     leida: false,
     createdAt: timestamp
   }));
+
+// Etiquetas legibles para armar mensajes de notificación con el detalle de qué cambió
+const ESTADO_LABELS: Record<DocumentoEstado, string> = {
+  creada: 'Borrador',
+  estratificacion: 'Estratificación',
+  'revision-tecnica': 'Revisión Técnica',
+  aprobada: 'Aprobada',
+  anulada: 'Anulada'
+};
+
+const RIESGO_LABELS: Record<RiesgoTipo, string> = {
+  'sin-riesgo': 'Sin Riesgo',
+  'riesgo-minimo': 'Riesgo Mínimo',
+  'riesgo-mayor': 'Riesgo Mayor'
+};
+
+// Compara el documento original contra los campos entrantes de editarDocumento y
+// describe en texto plano qué cambió puntualmente (para notificaciones personalizadas)
+const describirCambiosDocumento = (
+  doc: Documento,
+  campos: Partial<Pick<Documento, 'tema' | 'descripcion' | 'riesgoDeclarado' | 'riesgoConfirmado' | 'estado'>>
+): string[] => {
+  const cambios: string[] = [];
+
+  if (campos.tema !== undefined && campos.tema !== doc.tema) {
+    cambios.push(`título: "${doc.tema}" → "${campos.tema}"`);
+  }
+  if (campos.descripcion !== undefined && campos.descripcion !== doc.descripcion) {
+    cambios.push('descripción/justificación');
+  }
+  if (campos.riesgoDeclarado !== undefined && campos.riesgoDeclarado !== doc.riesgoDeclarado) {
+    cambios.push(`riesgo declarado: ${RIESGO_LABELS[doc.riesgoDeclarado]} → ${RIESGO_LABELS[campos.riesgoDeclarado]}`);
+  }
+  if (campos.riesgoConfirmado !== undefined && campos.riesgoConfirmado !== doc.riesgoConfirmado) {
+    const antes = doc.riesgoConfirmado ? RIESGO_LABELS[doc.riesgoConfirmado] : 'sin confirmar';
+    cambios.push(`riesgo confirmado: ${antes} → ${RIESGO_LABELS[campos.riesgoConfirmado]}`);
+  }
+  if (campos.estado !== undefined && campos.estado !== doc.estado) {
+    cambios.push(`estado: ${ESTADO_LABELS[doc.estado]} → ${ESTADO_LABELS[campos.estado]}`);
+  }
+
+  return cambios;
+};
+
+const CAMPO_TIPO_LABELS: Record<CampoTipo, string> = {
+  checklist: 'Checklist',
+  'texto-libre': 'Respuesta Abierta',
+  archivo: 'Adjuntar Archivo'
+};
+
+// Compara las preguntas de un AnexoTemplate antes/después de una edición y describe
+// en texto plano qué pregunta se agregó, eliminó, o tuvo su texto/tipo de campo editado
+// (para notificaciones personalizadas, en vez de un mensaje genérico "se modificaron preguntas")
+const describirCambiosPreguntas = (preguntasAntes: Pregunta[], preguntasDespues: Pregunta[]): string[] => {
+  const cambios: string[] = [];
+
+  preguntasDespues.forEach(np => {
+    const op = preguntasAntes.find(p => p.id === np.id);
+    if (!op) {
+      cambios.push(`pregunta agregada: "${np.texto}"`);
+      return;
+    }
+    if (op.texto !== np.texto) {
+      cambios.push(`pregunta editada: "${op.texto}" → "${np.texto}"`);
+    }
+    if (op.tipo !== np.tipo) {
+      cambios.push(`tipo de campo cambiado en "${np.texto}": ${CAMPO_TIPO_LABELS[op.tipo]} → ${CAMPO_TIPO_LABELS[np.tipo]}`);
+    }
+  });
+
+  preguntasAntes.forEach(op => {
+    const stillExists = preguntasDespues.some(np => np.id === op.id);
+    if (!stillExists) {
+      cambios.push(`pregunta eliminada: "${op.texto}"`);
+    }
+  });
+
+  return cambios;
+};
 
 // ============================================================================
 // SEED DATA: DOCUMENTOS Y ASIGNACIONES
@@ -469,17 +549,13 @@ export const useCeishStore = create<CeishState>()(
         // Notificación (5a): cualquier cambio estructural en las preguntas (añadida,
         // eliminada o editada) avisa a investigador + evaluadores activos de TODOS los
         // documentos activos que usan esta plantilla, no solo a quien ya la había respondido.
-        const huboCambioEstructural =
-          oldTemplate.preguntas.length !== nuevasPreguntas.length ||
-          oldTemplate.preguntas.some(op => {
-            const np = nuevasPreguntas.find(p => p.id === op.id);
-            return !np || np.texto !== op.texto || np.tipo !== op.tipo;
-          });
+        // El mensaje detalla puntualmente qué pregunta(s) cambiaron.
+        const cambiosPreguntas = describirCambiosPreguntas(oldTemplate.preguntas, nuevasPreguntas);
 
         const timestamp = new Date().toISOString();
         let nuevasNotificaciones: Notificacion[] = [];
 
-        if (huboCambioEstructural) {
+        if (cambiosPreguntas.length > 0) {
           const docsConEsteAnexo = docsActivos.filter(d =>
             state.tiposDocumento
               .find(t => t.id === d.tipoDocumentoId)
@@ -492,7 +568,7 @@ export const useCeishStore = create<CeishState>()(
               .map(a => a.evaluadorId);
             return buildNotificaciones(
               [d.investigadorId, ...evaluadoresActivos],
-              `El Administrador modificó las preguntas del Anexo ${numero} (${nombre}) en el proyecto ${d.codigo}. Revisa si tus respuestas siguen vigentes.`,
+              `El Administrador modificó el Anexo ${numero} (${nombre}) en el proyecto ${d.codigo}: ${cambiosPreguntas.join('; ')}.`,
               timestamp
             );
           });
@@ -733,12 +809,13 @@ export const useCeishStore = create<CeishState>()(
           .map(a => a.evaluadorId);
 
         // Notificación (5b): cualquier edición directa del documento por el admin
-        // (tema, descripción, riesgo o estado) avisa a investigador + evaluador(es) activos.
-        const huboCambioDeContenido = Object.keys(campos).length > 0;
-        if (huboCambioDeContenido) {
+        // (tema, descripción, riesgo o estado) avisa a investigador + evaluador(es) activos,
+        // detallando puntualmente qué campo(s) cambiaron.
+        const cambiosDocumento = describirCambiosDocumento(doc, campos);
+        if (cambiosDocumento.length > 0) {
           nuevasNotificaciones.push(...buildNotificaciones(
             [doc.investigadorId, ...evaluadoresActivosPrevios],
-            `El Administrador modificó el proyecto ${doc.codigo}.`,
+            `El Administrador modificó el proyecto ${doc.codigo}: ${cambiosDocumento.join('; ')}.`,
             timestamp
           ));
         }

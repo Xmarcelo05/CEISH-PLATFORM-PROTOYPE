@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation rule
+
+Every time a change is made to the codebase, document it in `CEISH_AVANCE.md` (roadmap table update + a dated session entry with file:line evidence, following the existing style in that file). Do this for every change, not just large features.
+
 ## Commands
 
 ```bash
