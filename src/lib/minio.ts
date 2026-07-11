@@ -42,12 +42,14 @@ export function ensureBucket(): Promise<void> {
   return bucketReady;
 }
 
-/** Sube un PDF y devuelve la clave del objeto almacenado. */
-export async function uploadPdf(buffer: Buffer, originalName: string): Promise<string> {
+/** Sube un archivo (PDF, imagen o .docx) y devuelve la clave del objeto almacenado. */
+export async function uploadFile(buffer: Buffer, originalName: string, contentType: string): Promise<string> {
   await ensureBucket();
-  const key = `documents/${randomUUID()}.pdf`;
+  const dot = originalName.lastIndexOf('.');
+  const ext = dot >= 0 ? originalName.slice(dot) : '';
+  const key = `documents/${randomUUID()}${ext}`;
   await getMinio().putObject(BUCKET, key, buffer, buffer.length, {
-    'Content-Type': 'application/pdf',
+    'Content-Type': contentType,
     'X-Amz-Meta-Original-Name': encodeURIComponent(originalName),
   });
   return key;

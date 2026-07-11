@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
 import { useNavigate } from 'react-router-dom';
-import { ceishFileCache } from '../../store/fileCache';
+import { ceishService } from '../../services/ceishService';
 import './evaluator.css';
 
 export function EvaluatorDashboard() {
@@ -78,16 +78,8 @@ export function EvaluatorDashboard() {
     return <span className={badge.className}>{badge.text}</span>;
   };
 
-  const handleVerArchivo = (versionPath: string, documentName: string) => {
-    const fileObj = ceishFileCache[versionPath];
-    if (fileObj) {
-      const url = URL.createObjectURL(fileObj);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
-      window.alert(
-        `Documento "${documentName}" no disponible en memoria de la sesión.\n\nPor favor, vuelva a subir el archivo desde la sesión del Investigador para visualizarlo.`
-      );
-    }
+  const handleVerArchivo = (versionPath: string) => {
+    window.open(ceishService.getFileRawUrl(versionPath), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -285,7 +277,7 @@ export function EvaluatorDashboard() {
                     <button 
                       className="eval-btn eval-btn--outline" 
                       style={{ padding: '2px 6px', fontSize: '10.5px', flexShrink: 0 }}
-                      onClick={() => handleVerArchivo(v.documentPath, v.documentName)}
+                      onClick={() => handleVerArchivo(v.documentPath)}
                     >
                       Ver PDF
                     </button>

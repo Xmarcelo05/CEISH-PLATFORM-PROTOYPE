@@ -20,6 +20,7 @@ export function TipoDocumentoCRUD() {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form State
   const [nombre, setNombre] = useState('');
@@ -118,7 +119,7 @@ export function TipoDocumentoCRUD() {
     setSecciones(updated);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) return alert('Por favor ingresa el nombre del Tipo de Documento.');
     if (secciones.length === 0) return alert('Debes agregar al menos una sección/etapa.');
@@ -128,14 +129,20 @@ export function TipoDocumentoCRUD() {
       return alert('Por favor completa el nombre de todas las etapas.');
     }
 
-    if (editingId) {
-      editarTipoDocumento(editingId, nombre, secciones);
-    } else {
-      crearTipoDocumento(nombre, secciones);
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await editarTipoDocumento(editingId, nombre, secciones);
+      } else {
+        await crearTipoDocumento(nombre, secciones);
+      }
+      setIsEditing(false);
+      setEditingId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al guardar el tipo de documento.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsEditing(false);
-    setEditingId(null);
   };
 
   return (
@@ -170,7 +177,9 @@ export function TipoDocumentoCRUD() {
                       className="eval-btn eval-btn--sm eval-btn--danger" 
                       onClick={() => {
                         if (confirm(`¿Estás seguro de que deseas eliminar el Tipo de Documento "${tipo.nombre}"? Esto invalidará nuevos registros de este tipo.`)) {
-                          eliminarTipoDocumento(tipo.id);
+                          eliminarTipoDocumento(tipo.id).catch((err) => {
+                            alert(err instanceof Error ? err.message : 'Error al eliminar el tipo de documento.');
+                          });
                         }
                       }}
                       disabled={tipo.id === 'tipo-investigacion'} // Bloquear borrado del seed core de prueba
@@ -192,8 +201,8 @@ export function TipoDocumentoCRUD() {
               <button type="button" className="eval-btn eval-btn--outline" onClick={() => setIsEditing(false)}>
                 Cancelar
               </button>
-              <button type="submit" className="eval-btn eval-btn--primary">
-                Guardar Configuración
+              <button type="submit" className="eval-btn eval-btn--primary" disabled={isSaving}>
+                {isSaving ? 'Guardando…' : 'Guardar Configuración'}
               </button>
             </div>
           </div>

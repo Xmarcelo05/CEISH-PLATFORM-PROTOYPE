@@ -36,7 +36,7 @@ async function apiSend<T>(method: string, path: string, body?: unknown): Promise
 
 // ─── DTOs (forma cruda que devuelve la API) ──────────────────────────────────
 
-interface UserDTO { id: string; name: string; email: string; role: string }
+interface UserDTO { id: string; name: string; email: string; role: string; cedula: string | null }
 interface SubmissionDTO {
   id: string; student_id: string; document_name: string; document_path: string | null;
   comment: string; status: string; submitted_at: string;
@@ -69,7 +69,7 @@ function mapSubStatus(dbStatus: string): SubmissionStatus {
 }
 
 function mapUser(d: UserDTO): User {
-  return { id: d.id, name: d.name, email: d.email, role: mapRole(d.role) };
+  return { id: d.id, name: d.name, email: d.email, role: mapRole(d.role), cedula: d.cedula ?? undefined };
 }
 
 function mapSubmission(d: SubmissionDTO): StudentSubmission {

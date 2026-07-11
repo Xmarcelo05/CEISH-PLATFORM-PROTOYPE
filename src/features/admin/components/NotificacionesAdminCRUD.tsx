@@ -1,17 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCeishStore } from '../../../store/ceishStore';
-
-// Directorio simulado de usuarios (mismo esquema de IDs deterministas usado en
-// database/seed.sql y replicado en USUARIOS_REGISTRADOS de CrearInvestigacionModal.tsx)
-const USUARIOS_SISTEMA = [
-  { id: 'a0000000-0000-0000-0000-000000000001', name: 'Admin Demo', role: 'admin' as const },
-  { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo', role: 'evaluator' as const },
-  { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH', role: 'evaluator' as const },
-  { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia', role: 'evaluator' as const },
-  { id: 'c0000000-0000-0000-0000-000000000001', name: 'Juan Pérez', role: 'student' as const },
-  { id: 'c0000000-0000-0000-0000-000000000002', name: 'María López', role: 'student' as const },
-  { id: 'c0000000-0000-0000-0000-000000000003', name: 'Carlos Ruiz', role: 'student' as const }
-];
+import { platformService } from '../../../shared/services/platformService';
+import type { User } from '../../../shared/types/platform.types';
 
 const ROLE_LABEL: Record<string, string> = {
   student: 'Investigadores',
@@ -22,16 +12,22 @@ const ROLE_LABEL: Record<string, string> = {
 export function NotificacionesAdminCRUD() {
   const { notificaciones, enviarNotificacionManual } = useCeishStore();
 
+  const [usuarios, setUsuarios] = useState<User[]>([]);
+  useEffect(() => {
+    platformService.getUsers().then(setUsuarios).catch(() => setUsuarios([]));
+  }, []);
+
   const [seleccionados, setSeleccionados] = useState<string[]>([]);
   const [mensaje, setMensaje] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const toggleUsuario = (id: string) => {
     setSeleccionados(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   const toggleRol = (rol: string) => {
-    const idsDelRol = USUARIOS_SISTEMA.filter(u => u.role === rol).map(u => u.id);
+    const idsDelRol = usuarios.filter(u => u.role === rol).map(u => u.id);
     const todosYaSeleccionados = idsDelRol.every(id => seleccionados.includes(id));
     setSeleccionados(prev =>
       todosYaSeleccionados
@@ -40,22 +36,29 @@ export function NotificacionesAdminCRUD() {
     );
   };
 
-  const handleEnviar = (e: React.FormEvent) => {
+  const handleEnviar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (seleccionados.length === 0 || !mensaje.trim()) {
       return;
     }
-    enviarNotificacionManual(seleccionados, mensaje.trim());
-    setFeedback(`Mensaje enviado a ${seleccionados.length} destinatario(s).`);
-    setSeleccionados([]);
-    setMensaje('');
+    setIsSending(true);
+    try {
+      await enviarNotificacionManual(seleccionados, mensaje.trim());
+      setFeedback(`Mensaje enviado a ${seleccionados.length} destinatario(s).`);
+      setSeleccionados([]);
+      setMensaje('');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al enviar la notificación.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const enviados = notificaciones
     .filter(n => n.tipo === 'manual')
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const nombreDe = (id: string) => USUARIOS_SISTEMA.find(u => u.id === id)?.name ?? id;
+  const nombreDe = (id: string) => usuarios.find(u => u.id === id)?.name ?? id;
 
   return (
     <div className="admin-crud-panel">
@@ -78,7 +81,7 @@ export function NotificacionesAdminCRUD() {
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '4px' }}>
-                {USUARIOS_SISTEMA.filter(u => u.role === rol).map(u => (
+                {usuarios.filter(u => u.role === rol).map(u => (
                   <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
                     <input
                       type="checkbox"
@@ -107,9 +110,9 @@ export function NotificacionesAdminCRUD() {
           <button
             type="submit"
             className="eval-btn eval-btn--primary"
-            disabled={seleccionados.length === 0 || !mensaje.trim()}
+            disabled={seleccionados.length === 0 || !mensaje.trim() || isSending}
           >
-            Enviar a {seleccionados.length} destinatario(s)
+            {isSending ? 'Enviando…' : `Enviar a ${seleccionados.length} destinatario(s)`}
           </button>
         </div>
       </form>

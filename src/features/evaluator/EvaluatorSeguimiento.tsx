@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
-import { ceishFileCache } from '../../store/fileCache';
+import { ceishService } from '../../services/ceishService';
 import { generateDocx } from '../../utils/docxGenerator';
 import './evaluator.css';
 
@@ -113,11 +113,15 @@ export function EvaluatorSeguimiento() {
   };
 
   // Función para descargar acta en Word (.docx)
-  const handleDescargarWord = (doc: any, template: any) => {
+  const handleDescargarWord = async (doc: any, template: any) => {
     const resp = respuestasAnexos.find(
       (r) => r.documentoId === doc.id && r.anexoTemplateId === template.id
     );
     if (!resp) return;
+    if (!template.wordTemplateObjectKey) {
+      alert('Este anexo no tiene una plantilla de Word oficial asociada en el sistema.');
+      return;
+    }
 
     // Construir datos de inyección
     const dataToInject: Record<string, any> = {
@@ -152,7 +156,12 @@ export function EvaluatorSeguimiento() {
     });
 
     const fileName = `Anexo_${template.numero}_${doc.codigo || 'CEISH'}`;
-    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+    try {
+      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
+      generateDocx(bytes, dataToInject, fileName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
+    }
   };
 
   return (

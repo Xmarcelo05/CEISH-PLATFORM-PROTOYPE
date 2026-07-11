@@ -89,7 +89,7 @@ export function AdminDashboard() {
     setEditEvaluadorId(activeAsig ? activeAsig.evaluadorId : '');
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDoc) return;
 
@@ -97,25 +97,19 @@ export function AdminDashboard() {
       tema: editTema,
       descripcion: editDescripcion,
       riesgoDeclarado: editRiesgoDeclarado,
-      riesgoConfirmado: editRiesgoConfirmado === 'none' ? undefined : editRiesgoConfirmado,
+      riesgoConfirmado: editRiesgoConfirmado === 'none' ? null : editRiesgoConfirmado,
       estado: editEstado,
     };
 
-    editarDocumento(editingDoc.id, campos, editEvaluadorId || undefined);
-
-    if (!editEvaluadorId) {
-      // Si el administrador selecciona '-- Sin asignar --', desactivamos la asignación activa previa
-      useCeishStore.setState((state) => ({
-        asignaciones: state.asignaciones.map((a) =>
-          a.documentoId === editingDoc.id && a.active
-            ? { ...a, active: false, bajaMotivo: 'Removido por el Administrador.' }
-            : a
-        ),
-      }));
+    try {
+      // editEvaluadorId siempre se envía (aunque sea '') — el servidor interpreta
+      // '' como "desasignar" y cualquier id como "reasignar", en una sola transacción.
+      await editarDocumento(editingDoc.id, campos, editEvaluadorId);
+      setEditingDoc(null);
+      window.alert('Proyecto modificado con éxito.');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al modificar el proyecto.');
     }
-
-    setEditingDoc(null);
-    window.alert('Proyecto modificado con éxito.');
   };
 
   const getEstadoBadge = (estado: DocumentoEstado) => {

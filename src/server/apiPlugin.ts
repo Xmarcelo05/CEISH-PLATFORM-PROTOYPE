@@ -8,8 +8,9 @@
 
 import type { Plugin, Connect } from 'vite';
 import type { ServerResponse } from 'node:http';
-import busboy from 'busboy';
 
+import { sendJson, readJsonBody, parseMultipart, MAX_BYTES } from './httpHelpers';
+import { handleCeishRoute } from './ceishApiRoutes';
 import { listUsers, listUsersByRole, getUserById } from './queries/users';
 import {
   listSubmissions, getSubmissionByStudent, getSubmissionById,
@@ -21,54 +22,7 @@ import {
 import { getReviewBySubmission, getOrCreateReview, saveReview } from './queries/reviews';
 import { loginUser } from './queries/auth';
 import type { SaveReviewInput } from './queries/reviews';
-import { uploadPdf, getPresignedUrl, getObjectStream } from '../lib/minio';
-
-const MAX_BYTES = Number(process.env.UPLOAD_MAX_MB ?? 15) * 1024 * 1024;
-
-function sendJson(res: ServerResponse, status: number, body: unknown) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
-}
-
-/** Lee y parsea el cuerpo JSON de la petición. */
-function readJsonBody(req: Connect.IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    let raw = '';
-    req.on('data', (chunk) => { raw += chunk; });
-    req.on('end', () => {
-      if (!raw) return resolve({});
-      try { resolve(JSON.parse(raw)); } catch (e) { reject(e); }
-    });
-    req.on('error', reject);
-  });
-}
-
-interface ParsedFile { buffer: Buffer; filename: string; mimeType: string }
-interface ParsedMultipart { fields: Record<string, string>; file: ParsedFile | null; tooLarge: boolean }
-
-/** Parsea un multipart/form-data con un único archivo (límite de tamaño aplicado). */
-function parseMultipart(req: Connect.IncomingMessage): Promise<ParsedMultipart> {
-  return new Promise((resolve, reject) => {
-    const bb = busboy({ headers: req.headers, limits: { files: 1, fileSize: MAX_BYTES } });
-    const fields: Record<string, string> = {};
-    let file: ParsedFile | null = null;
-    let tooLarge = false;
-
-    bb.on('field', (name, value) => { fields[name] = value; });
-    bb.on('file', (_name, stream, info) => {
-      const chunks: Buffer[] = [];
-      stream.on('data', (c: Buffer) => chunks.push(c));
-      stream.on('limit', () => { tooLarge = true; });
-      stream.on('end', () => {
-        file = { buffer: Buffer.concat(chunks), filename: info.filename, mimeType: info.mimeType };
-      });
-    });
-    bb.on('close', () => resolve({ fields, file, tooLarge }));
-    bb.on('error', reject);
-    req.pipe(bb);
-  });
-}
+import { uploadFile, getPresignedUrl, getObjectStream } from '../lib/minio';
 
 /** Resuelve una petición /api/* y devuelve true si la manejó. */
 async function handle(req: Connect.IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -118,12 +72,14 @@ async function handle(req: Connect.IncomingMessage, res: ServerResponse): Promis
       sendJson(res, 400, { error: 'No se recibió ningún archivo' });
       return true;
     }
-    const isPdf = file.mimeType === 'application/pdf' || file.filename.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      sendJson(res, 415, { error: 'Solo se permiten archivos PDF' });
+    const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.jpg', '.jpeg', '.png'];
+    const lowerName = file.filename.toLowerCase();
+    const isAllowed = ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+    if (!isAllowed) {
+      sendJson(res, 415, { error: 'Solo se permiten archivos PDF, Word (.docx) o imágenes (jpg/png)' });
       return true;
     }
-    const documentPath = await uploadPdf(file.buffer, file.filename);
+    const documentPath = await uploadFile(file.buffer, file.filename, file.mimeType || 'application/octet-stream');
     sendJson(res, 201, { documentPath, documentName: file.filename, size: file.buffer.length });
     return true;
   }
@@ -238,6 +194,12 @@ async function handle(req: Connect.IncomingMessage, res: ServerResponse): Promis
     await saveReview(b as unknown as SaveReviewInput);
     sendJson(res, 200, { ok: true });
     return true;
+  }
+
+  // ── Motor CEISH v3 ─────────────────────────────────────────────────────
+  if (path.startsWith('/api/ceish/')) {
+    const handled = await handleCeishRoute(req, res, path, method, url);
+    if (handled) return true;
   }
 
   sendJson(res, 404, { error: 'Ruta de API no encontrada' });

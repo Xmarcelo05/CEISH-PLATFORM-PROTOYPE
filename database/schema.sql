@@ -24,6 +24,7 @@ CREATE TABLE users (
   email      VARCHAR(255) NOT NULL UNIQUE,
   password   VARCHAR(255) NOT NULL,           -- texto plano solo para el prototipo
   role_id    UUID NOT NULL REFERENCES roles(id),
+  cedula     VARCHAR(20),                     -- usada por el motor CEISH para detectar conflicto de interés autor↔evaluador
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -128,3 +129,153 @@ CREATE TABLE annotations (
 );
 
 CREATE INDEX idx_annotations_criteria ON annotations(criteria_evaluation_id);
+
+-- ============================================================================
+-- Motor CEISH v3 (workflow configurable) — Etapa 1: configuración
+-- Los ids son TEXT (no UUID) porque el código de negocio referencia algunos
+-- ids de anexo de forma literal (p. ej. 'anexo-27' al confirmar exención),
+-- igual que hacía el prototipo en memoria (src/store/ceishStore.ts).
+-- Los campos JSONB se leen/escriben siempre como unidad completa junto a su
+-- fila padre (nunca se consultan de forma independiente entre filas), así que
+-- no se normalizan en tablas propias — ver CEISH_AVANCE.md para el criterio.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- ceish_anexo_templates  (plantillas de anexo configurables por el admin)
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_anexo_templates (
+  id                        TEXT PRIMARY KEY,
+  numero                    SMALLINT NOT NULL,
+  nombre                    VARCHAR(255) NOT NULL,
+  rol                       VARCHAR(20) NOT NULL CHECK (rol IN ('investigador', 'evaluador')),
+  preguntas                 JSONB NOT NULL DEFAULT '[]',   -- Pregunta[]
+  word_template_name        TEXT,
+  word_template_object_key  TEXT,                          -- clave del objeto en MinIO (bucket "documents")
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ----------------------------------------------------------------------------
+-- ceish_tipos_documento  (flujos configurables: secciones/etapas y sus anexos)
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_tipos_documento (
+  id         TEXT PRIMARY KEY,
+  nombre     VARCHAR(255) NOT NULL,
+  secciones  JSONB NOT NULL DEFAULT '[]',   -- Seccion[] (incluye anexos: AnexoAsignado[])
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- Motor CEISH v3 — Etapa 2: trámites (documentos) y asignaciones
+-- ============================================================================
+
+-- Secuencia para el código de trámite (CEISH-<año>-NNNN), reemplaza el
+-- `documentos.length + 1` del prototipo en memoria — que no era seguro ante
+-- escrituras concurrentes.
+CREATE SEQUENCE ceish_documento_codigo_seq START 1;
+
+-- ----------------------------------------------------------------------------
+-- ceish_documentos  (instancia de trámite/investigación)
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_documentos (
+  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  codigo                    VARCHAR(30) NOT NULL UNIQUE,
+  tipo_documento_id         TEXT NOT NULL REFERENCES ceish_tipos_documento(id),
+  tema                      VARCHAR(500) NOT NULL,
+  descripcion               TEXT NOT NULL,
+  investigador_id           UUID NOT NULL REFERENCES users(id),
+  autores                   JSONB NOT NULL DEFAULT '[]',   -- Autor[]
+  riesgo_declarado          VARCHAR(20) NOT NULL,
+  riesgo_confirmado         VARCHAR(20),
+  miembros_ceish_declarados JSONB NOT NULL DEFAULT '[]',   -- string[] (ids de evaluadores excluidos)
+  estado                    VARCHAR(20) NOT NULL DEFAULT 'creada'
+                               CHECK (estado IN ('creada', 'estratificacion', 'revision-tecnica', 'aprobada', 'anulada')),
+  versiones_archivo         JSONB NOT NULL DEFAULT '[]',   -- VersionArchivo[] (documentPath = clave MinIO)
+  historial_estados         JSONB NOT NULL DEFAULT '[]',   -- HistorialEstado[]
+  cronometro                JSONB,                          -- Cronometro
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ceish_documentos_investigador ON ceish_documentos(investigador_id);
+
+-- ----------------------------------------------------------------------------
+-- ceish_asignaciones  (asignación ciega de evaluador por sección)
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_asignaciones (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  documento_id  UUID NOT NULL REFERENCES ceish_documentos(id) ON DELETE CASCADE,
+  seccion_id    TEXT NOT NULL,
+  evaluador_id  UUID NOT NULL REFERENCES users(id),
+  active        BOOLEAN NOT NULL DEFAULT TRUE,
+  baja_motivo   TEXT,
+  baja_anexo_id UUID,
+  assigned_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ceish_asignaciones_evaluador ON ceish_asignaciones(evaluador_id, active);
+CREATE INDEX idx_ceish_asignaciones_documento ON ceish_asignaciones(documento_id, active);
+
+-- ============================================================================
+-- Motor CEISH v3 — Etapa 3: respuestas de anexos (borradores + emisiones)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- ceish_respuestas_anexo
+-- Una fila por (documento, anexo, versión de archivo): mientras es borrador
+-- guarda resultado='coincide' (misma convención que el prototipo en memoria);
+-- al emitir, guardarRespuestaAnexo/emitirAnexo hacen UPSERT sobre la misma
+-- clave, así que la fila "borrador" se convierte en la emisión oficial.
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_respuestas_anexo (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  documento_id         UUID NOT NULL REFERENCES ceish_documentos(id) ON DELETE CASCADE,
+  anexo_template_id    TEXT NOT NULL,   -- sin FK dura: una plantilla borrada no debe romper respuestas históricas
+  seccion_id           TEXT NOT NULL,
+  version_archivo_id   TEXT NOT NULL,
+  emitido_por_id       UUID NOT NULL REFERENCES users(id),
+  emitido_por_nombre   VARCHAR(255) NOT NULL,
+  emitido_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resultado            VARCHAR(30) NOT NULL,
+  valores              JSONB NOT NULL DEFAULT '[]',   -- ValorCampo[]
+  comentarios_anotados JSONB NOT NULL DEFAULT '[]',   -- ComentarioAnotacion[]
+  snapshot_preguntas   JSONB NOT NULL DEFAULT '[]',   -- Pregunta[] congelado para auditoría
+
+  CONSTRAINT ceish_respuestas_anexo_unique UNIQUE (documento_id, anexo_template_id, version_archivo_id)
+);
+
+CREATE INDEX idx_ceish_respuestas_documento ON ceish_respuestas_anexo(documento_id);
+
+-- ============================================================================
+-- Motor CEISH v3 — Etapa 4: escalamientos y notificaciones
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- ceish_escalamientos  (situación elevada por un evaluador al administrador)
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_escalamientos (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  respuesta_anexo_id   UUID REFERENCES ceish_respuestas_anexo(id) ON DELETE SET NULL,
+  documento_id         UUID NOT NULL REFERENCES ceish_documentos(id) ON DELETE CASCADE,
+  seccion_id           TEXT NOT NULL,
+  anexo_template_id    TEXT NOT NULL,
+  comentario_evaluador TEXT NOT NULL,
+  estado               VARCHAR(20) NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'resuelto')),
+  edicion_admin        TEXT,
+  notificado           BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ceish_escalamientos_estado ON ceish_escalamientos(estado);
+
+-- ----------------------------------------------------------------------------
+-- ceish_notificaciones
+-- ----------------------------------------------------------------------------
+CREATE TABLE ceish_notificaciones (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo            VARCHAR(20) NOT NULL CHECK (tipo IN ('automatica', 'manual')),
+  destinatario_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mensaje         TEXT NOT NULL,
+  leida           BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ceish_notificaciones_destinatario ON ceish_notificaciones(destinatario_id, leida);

@@ -6,12 +6,13 @@ export interface UserRow {
   name: string;
   email: string;
   role: string;
+  cedula: string | null;
   created_at: string;
 }
 
 export async function listUsers(): Promise<UserRow[]> {
   return query<UserRow>(
-    `SELECT u.id, u.name, u.email, r.name AS role, u.created_at
+    `SELECT u.id, u.name, u.email, r.name AS role, u.cedula, u.created_at
        FROM users u
        JOIN roles r ON r.id = u.role_id
       ORDER BY u.created_at`,
@@ -20,7 +21,7 @@ export async function listUsers(): Promise<UserRow[]> {
 
 export async function listUsersByRole(role: string): Promise<UserRow[]> {
   return query<UserRow>(
-    `SELECT u.id, u.name, u.email, r.name AS role, u.created_at
+    `SELECT u.id, u.name, u.email, r.name AS role, u.cedula, u.created_at
        FROM users u
        JOIN roles r ON r.id = u.role_id
       WHERE r.name = $1
@@ -31,7 +32,7 @@ export async function listUsersByRole(role: string): Promise<UserRow[]> {
 
 export async function getUserById(id: string): Promise<UserRow | null> {
   const rows = await query<UserRow>(
-    `SELECT u.id, u.name, u.email, r.name AS role, u.created_at
+    `SELECT u.id, u.name, u.email, r.name AS role, u.cedula, u.created_at
        FROM users u
        JOIN roles r ON r.id = u.role_id
       WHERE u.id = $1`,

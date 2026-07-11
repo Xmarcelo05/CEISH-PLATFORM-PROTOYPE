@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
-import { ceishFileCache } from '../../store/fileCache';
+import { ceishService } from '../../services/ceishService';
 import { CrearInvestigacionModal } from './components/CrearInvestigacionModal';
 import { generateDocx } from '../../utils/docxGenerator';
 import type { ValorCampo } from '../../shared/types/platform.types';
@@ -68,10 +68,10 @@ export function SubmissionPage() {
     }
   }, [activeAnexoId, selectedDocId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
 
-  const handleDownloadWordTemplate = (anexoId: string) => {
+  const handleDownloadWordTemplate = async (anexoId: string) => {
     const template = anexosTemplates.find(t => t.id === anexoId);
     if (!template) return;
-    if (!template.wordTemplateBase64) {
+    if (!template.wordTemplateObjectKey) {
       alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
       return;
     }
@@ -101,7 +101,12 @@ export function SubmissionPage() {
     });
 
     const fileName = `Anexo_${template.numero}_${selectedDoc?.codigo || 'CEISH'}`;
-    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+    try {
+      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
+      generateDocx(bytes, dataToInject, fileName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
+    }
   };
 
   // Autoseleccionar la primera pestaña de anexo al abrir un documento en borrador
@@ -122,9 +127,9 @@ export function SubmissionPage() {
   }, [selectedDocId]);
 
   // Acción para solicitar revisión
-  const handleSolicitarRevision = (id: string) => {
+  const handleSolicitarRevision = async (id: string) => {
     try {
-      solicitarRevision(id, currentUser.name);
+      await solicitarRevision(id, currentUser.name);
       window.alert('Solicitud de revisión enviada con éxito. Se ha asignado un revisor aleatorio (ciego) de manera automática.');
     } catch (e) {
       window.alert((e as Error).message);
@@ -132,7 +137,7 @@ export function SubmissionPage() {
   };
 
   // Guardar respuestas de un anexo de Etapa 1
-  const handleGuardarAnexo = (e: React.FormEvent) => {
+  const handleGuardarAnexo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDoc || !activeAnexoId || !latestVersion) return;
 
@@ -144,65 +149,43 @@ export function SubmissionPage() {
     const tipoDoc = tiposDocumento.find(t => t.id === selectedDoc.tipoDocumentoId);
     const seccionId = tipoDoc?.secciones[0]?.id || 'sec-creacion';
 
-    guardarRespuestaAnexo({
-      anexoTemplateId: activeAnexoId,
-      documentoId: selectedDoc.id,
-      seccionId,
-      versionArchivoId: latestVersion.id,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores,
-      comentariosAnotados: []
-    });
-
-    window.alert('Borrador del anexo guardado localmente con éxito.');
+    try {
+      await guardarRespuestaAnexo({
+        anexoTemplateId: activeAnexoId,
+        documentoId: selectedDoc.id,
+        seccionId,
+        versionArchivoId: latestVersion.id,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores,
+        comentariosAnotados: []
+      });
+      window.alert('Borrador del anexo guardado con éxito.');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al guardar el borrador del anexo.');
+    }
   };
 
   // Subir un PDF de corrección
-  const handleEnviarCorreccion = (e: React.FormEvent) => {
+  const handleEnviarCorreccion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDoc || !correccionFile) return;
 
-    const fileId = 'ver-' + Date.now();
-    ceishFileCache[fileId] = correccionFile;
-
-    subirCorreccion(
-      selectedDoc.id,
-      correccionFile.name,
-      fileId,
-      currentUser.name
-    );
-
-    // Guardar el comentario de corrección como bitácora simulada en el historial
-    useCeishStore.setState(state => {
-      const docs = [...state.documentos];
-      const idx = docs.findIndex(d => d.id === selectedDoc.id);
-      if (idx !== -1) {
-        const hist = [...docs[idx].historialEstados];
-        if (hist.length > 0) {
-          hist[hist.length - 1].comment += ` Observaciones del Investigador: "${correccionComentario}"`;
-        }
-        docs[idx] = { ...docs[idx], historialEstados: hist };
-      }
-      return { documentos: docs };
-    });
-
-    window.alert('Correcciones enviadas con éxito. El revisor ha sido notificado para evaluar el nuevo archivo.');
-    setCorreccionFile(null);
-    setCorreccionComentario('');
+    try {
+      // El comentario del investigador se anexa al historial dentro de la misma
+      // transacción del servidor (subirCorreccion), sin una segunda escritura aparte.
+      await subirCorreccion(selectedDoc.id, correccionFile, currentUser.name, correccionComentario);
+      window.alert('Correcciones enviadas con éxito. El revisor ha sido notificado para evaluar el nuevo archivo.');
+      setCorreccionFile(null);
+      setCorreccionComentario('');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al enviar la corrección.');
+    }
   };
 
-  // Visualizar PDF en memoria
-  const handleVerArchivo = (versionPath: string, documentName: string) => {
-    const fileObj = ceishFileCache[versionPath];
-    if (fileObj) {
-      const url = URL.createObjectURL(fileObj);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
-      window.alert(
-        `Documento "${documentName}" no disponible tras recargar.\n\nEn este prototipo, el archivo PDF se mantiene en el caché de la sesión activa del navegador. Vuelva a subir el archivo para esta prueba.`
-      );
-    }
+  // Visualizar el archivo almacenado en MinIO
+  const handleVerArchivo = (versionPath: string) => {
+    window.open(ceishService.getFileRawUrl(versionPath), '_blank', 'noopener,noreferrer');
   };
 
   // Renderizar badge de estado
@@ -431,7 +414,7 @@ export function SubmissionPage() {
                     <button 
                       className="eval-btn eval-btn--outline" 
                       style={{ padding: '3px 8px', fontSize: '11px', flexShrink: 0 }}
-                      onClick={() => handleVerArchivo(v.documentPath, v.documentName)}
+                      onClick={() => handleVerArchivo(v.documentPath)}
                     >
                       Ver PDF
                     </button>
@@ -578,7 +561,7 @@ export function SubmissionPage() {
                         <h5 style={{ margin: 0, fontSize: '13px', color: '#1e293b', flex: 1 }}>
                           Anexo {template.numero} - {template.nombre}
                         </h5>
-                        {template.wordTemplateBase64 && (
+                        {template.wordTemplateObjectKey && (
                           <button
                             type="button"
                             className="eval-btn eval-btn--sm eval-btn--primary"
@@ -614,7 +597,7 @@ export function SubmissionPage() {
                                 <input
                                   type="file"
                                   accept=".pdf,application/pdf,image/*"
-                                  onChange={(e) => {
+                                  onChange={async (e) => {
                                     const f = e.target.files?.[0] || null;
                                     if (!f) return;
                                     const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
@@ -623,9 +606,12 @@ export function SubmissionPage() {
                                       window.alert('Solo se permiten archivos en formato PDF o imagen.');
                                       return;
                                     }
-                                    const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                                    ceishFileCache[fileKey] = f;
-                                    setRespuestasForm({ ...respuestasForm, [p.id]: { documentName: f.name, documentPath: fileKey } });
+                                    try {
+                                      const { documentPath } = await ceishService.uploadFile(f);
+                                      setRespuestasForm({ ...respuestasForm, [p.id]: { documentName: f.name, documentPath } });
+                                    } catch (err) {
+                                      window.alert(err instanceof Error ? err.message : 'Error al subir el archivo.');
+                                    }
                                   }}
                                   style={{ fontSize: '12px' }}
                                 />
@@ -796,7 +782,7 @@ export function SubmissionPage() {
                                     type="button"
                                     className="eval-btn eval-btn--outline"
                                     style={{ padding: '2px 8px', fontSize: '10.5px' }}
-                                    onClick={() => handleVerArchivo(val.valor.documentPath, val.valor.documentName)}
+                                    onClick={() => handleVerArchivo(val.valor.documentPath)}
                                   >
                                     Ver
                                   </button>

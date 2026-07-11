@@ -5,7 +5,7 @@ Este documento registra de forma detallada el progreso, las decisiones de diseñ
 ---
 
 ## 🎯 Objetivo General
-Construir un prototipo funcional interactivo basado en un **motor de workflows configurable**, donde el administrador pueda definir dinámicamente Tipos de Documento, Secciones/Etapas, Anexos reutilizables y sus correspondientes preguntas. El flujo de "Investigación" pasa a ser la primera configuración semilla del sistema, simulando los datos en Zustand + localStorage.
+Construir un prototipo funcional interactivo basado en un **motor de workflows configurable**, donde el administrador pueda definir dinámicamente Tipos de Documento, Secciones/Etapas, Anexos reutilizables y sus correspondientes preguntas. El flujo de "Investigación" pasa a ser la primera configuración semilla del sistema. **Actualización (2026-07-11, Sesión 8):** el motor ya no simula datos en Zustand + localStorage — las 7 entidades (`anexosTemplates`, `tiposDocumento`, `documentos`, `asignaciones`, `respuestasAnexos`, `escalamientos`, `notificaciones`) están en PostgreSQL real, con los archivos (PDFs, plantillas Word) en MinIO. Zustand ahora es solo un cache reactivo en memoria hidratado desde la API, sin `persist`. Ver Sesión 8 para el detalle completo.
 
 ---
 
@@ -33,17 +33,17 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
 | **3.1 Dashboard de Evaluaciones Ciega** | ✅ Completado | 3 pestañas (Pendientes/Suspendidas/Completadas) con contadores dinámicos, filtradas por asignación activa del evaluador y ocultación estricta de identidad de autores, en [EvaluatorDashboard.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/EvaluatorDashboard.tsx). |
-| **3.2 Evaluación Dinámica Split-Screen** | ✅ Completado | Carga dinámica de pestañas de anexos y preguntas según la sección activa del trámite (`activeSeccion.anexos`, no hardcodeado a Anexo 11→12). Integración con `<PDFViewer>` desde `ceishFileCache` (memoria de sesión) en [ReviewCeishPage.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx). |
+| **3.2 Evaluación Dinámica Split-Screen** | ✅ Completado | Carga dinámica de pestañas de anexos y preguntas según la sección activa del trámite (`activeSeccion.anexos`, no hardcodeado a Anexo 11→12). Integración con `<PDFViewer>` desde MinIO (`/api/ceish/files/:key/raw`, ver Sesión 8 — antes era `ceishFileCache` en memoria de sesión) en [ReviewCeishPage.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx). |
 | **3.3 Historial de Rondas y Anotaciones por Página** | ✅ Completado | Anotaciones por página del PDF ligadas al Anexo 12 (`ComentarioAnotacion`) y panel de rondas anteriores con observaciones (`rondasPreviasA12`) en `ReviewCeishPage.tsx`. |
 | **3.4 Disparadores de Acciones Especiales** | ✅ Completado (con la limitación reconocida en el dominio) | Acciones programadas a mano por `anexoTemplateId` literal (`'anexo-27'`, `'anexo-11'`, `'anexo-23'`, `'anexo-12'`, `'anexo-13'`, `'anexo-26'`) en `ReviewCeishPage.tsx` y `ceishStore.ts` — el propio código las marca con un comentario explícito de "limitación consciente del prototipo": si el admin crea un `TipoDocumento` nuevo con otros anexos, estos disparadores no se activan automáticamente y habría que programarlos a mano, tal como anticipa la sección 3 del dominio. |
 | **3.5 Devolución y Escalamiento al Admin** | 🟡 Parcial | El evaluador **sí puede** devolver (modal "Devolver para Correcciones", regresa el documento a `'creada'`) y **sí puede** escalar (modal "Escalar a Admin" → `crearEscalamiento`). Lo que falta es el lado del administrador (ver Fase 4). |
 
-### 🛠️ Fase 4: Motor de Escalamientos, Notificaciones y Auditoría — **PENDIENTE**
+### 🛠️ Fase 4: Motor de Escalamientos, Notificaciones y Auditoría — **PARCIAL** (solo falta 4.1)
 | Tarea | Estado | Descripción / Entregable |
 |---|---|---|
-| **4.1 Bandeja de Admin para resolver Escalamientos** | ⬜ No implementado | `resolverEscalamiento(id, edicionAdmin)` existe en `ceishStore.ts` y actualiza el estado a `'resuelto'`, pero **ningún componente lo invoca**. No existe pantalla de admin para ver escalamientos pendientes ni para editar el anexo escalado (sección 8 del dominio). |
-| **4.2 Notificaciones (automáticas + mensajería manual)** | ⬜ No implementado | `crearNotificacion`/`marcarNotificacionLeida` existen y se disparan automáticamente al editar preguntas de un anexo en uso (`editarAnexoTemplate`), pero no hay ninguna interfaz (campanita, bandeja, badge) que muestre esas notificaciones a nadie. Tampoco existe la mensajería manual multi-destinatario del admin (sección 6 del dominio). |
-| **4.3 Congelamiento total (tabla de la sección 7 del dominio)** | 🟡 Parcial | Implementado: eliminar/editar el texto de una pregunta borra la respuesta asociada en documentos activos y genera notificación automática (`editarAnexoTemplate`/`eliminarAnexoTemplate` en `ceishStore.ts`); documentos `aprobada`/`anulada` quedan excluidos de esa limpieza (congelados). Cada `RespuestaAnexo` guarda su `snapshotPreguntas`. **No verificado como regla explícita:** no existe un campo booleano de "sección completa" que se revierta a incompleta — el estado se recalcula al vuelo (`isEtapa1Completa`/`isAnexoCompletado`) cada render, lo cual logra el mismo efecto observable pero no es la implementación literal descrita. |
+| **4.1 Bandeja de Admin para resolver Escalamientos** | ⬜ No implementado | `resolverEscalamiento(id, edicionAdmin)` ahora persiste en `ceish_escalamientos` (PostgreSQL, ver Sesión 8) y el endpoint `PUT /api/ceish/escalamientos/:id/resolver` funciona de punta a punta (verificado por curl), pero **ningún componente de UI lo invoca todavía**. Sigue sin existir una pantalla de admin para ver escalamientos pendientes ni para editar el anexo escalado (sección 8 del dominio) — es el único punto de todo el motor que sigue pendiente tras la migración a base de datos. |
+| **4.2 Notificaciones (automáticas + mensajería manual)** | ✅ Completado | Campanita de notificaciones con contador de no leídas en el sidebar ([AppShell.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx), visible para los 3 roles), que lista `notificaciones` filtradas por destinatario y las marca como leídas al hacer clic. Mensajería manual multi-destinatario (por usuario individual o por rol completo) implementada en [NotificacionesAdminCRUD.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/NotificacionesAdminCRUD.tsx) vía `enviarNotificacionManual`, con historial de mensajes enviados. Desde la Sesión 8 todas las notificaciones (automáticas y manuales) se persisten en `ceish_notificaciones` — antes de esa sesión solo vivían en memoria del navegador. |
+| **4.3 Congelamiento total (tabla de la sección 7 del dominio)** | 🟡 Parcial | Implementado y ahora **persistido server-side dentro de una transacción** (Sesión 8, `updateAnexoTemplate`/`deleteAnexoTemplate` en `src/server/queries/ceish/anexoTemplates.ts`): eliminar/editar el texto de una pregunta borra el valor asociado en `ceish_respuestas_anexo` para documentos activos y genera notificación real a investigador + evaluadores activos; documentos `aprobada`/`anulada` quedan excluidos de esa limpieza (congelados). Cada `RespuestaAnexo` guarda su `snapshotPreguntas`. **No verificado como regla explícita:** no existe un campo booleano de "sección completa" que se revierta a incompleta — el estado se recalcula al vuelo (`isEtapa1Completa`/`isAnexoCompletado`) cada render, lo cual logra el mismo efecto observable pero no es la implementación literal descrita. |
 
 ---
 
@@ -96,7 +96,24 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
   * Los archivos de preguntas comparten la misma limitación ya documentada del PDF principal: viven en `ceishFileCache` (memoria del navegador) y se pierden al recargar la página.
 * **Verificación:** `npx tsc -b` corrió sin errores tras el cambio (ambos proyectos, app y node).
 
-### Sesión 4: Remplazo de Formularios por Plantillas de Word (.docx)
+### Sesión 4: Panel de Administración Ampliado, Notificaciones y Mensajería
+* **Fecha:** 2026-07-10
+* **Motivo:** Se detectó, al auditar el historial de commits contra este documento, que un tramo de trabajo (commits `51e688a` a `c7a13f2`, todos del 2026-07-10 entre las 09:27 y las 11:31) nunca quedó registrado aquí. Esta entrada documenta ese tramo retroactivamente, en el orden cronológico correcto (antes de la Sesión 5, que en ese momento era "Sesión 4").
+* **Actividades:**
+  * **Evaluadores alternos en datos de prueba:** Añadidos `Evaluador Alterno CEISH` y `Dr. Roberto Anchundia` a `database/seed.sql`, para poder probar la reasignación ciega de evaluador (por ejemplo al declarar conflicto de interés en Anexo 23) con más de un evaluador disponible.
+  * **Refactor de `AdminDashboard.tsx` ("panel admin"):** Rediseño completo del panel de administración con 3 pestañas (`proyectos` / `evaluadores` / `investigadores`):
+    * *Proyectos*: buscador y filtro por estado sobre todos los `Documento`, con un modal de edición directa (`editarDocumento`) que permite al admin corregir tema, descripción, riesgo declarado/confirmado, estado y evaluador asignado de cualquier trámite.
+    * *Evaluadores*: vista de carga de trabajo por evaluador (estudiantes asignados y estado de su entrega), con acceso directo a abrir la revisión.
+    * *Investigadores*: tabla de investigadores registrados con conteo de proyectos iniciados y un modal para listar/expandir los proyectos de un investigador puntual.
+    * Se eliminó la ruta `/admin/asignaciones` (y el `AssignmentPanel` legado que apuntaba a ella) del [router](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/app/router/index.tsx) y del sidebar de [AppShell.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx), ya que sus funciones quedaron cubiertas por las nuevas pestañas.
+  * **Sistema de Notificaciones (implementa la Fase 4.2 antes pendiente):**
+    * Nueva pantalla [NotificacionesAdminCRUD.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/features/admin/components/NotificacionesAdminCRUD.tsx) en la ruta `/admin/notificaciones`: el admin selecciona destinatarios (individuales o por rol completo vía "seleccionar/deseleccionar todos") y envía un mensaje libre mediante `enviarNotificacionManual`, con historial de mensajes ya enviados y su estado leído/no leído.
+    * Campanita de notificaciones agregada al sidebar en [AppShell.tsx](file:///C:/Users/Jesus/Desktop/CEISH/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx), visible para los 3 roles: muestra un contador de no leídas, lista las notificaciones del usuario actual (tanto las automáticas de `editarAnexoTemplate` como las manuales del admin) y las marca como leídas al hacer clic.
+    * Ampliada la lógica de `ceishStore.ts` para soportar el envío manual y la relación destinatario↔notificación además del disparo automático ya existente.
+  * **Modal de revisión de Anexos del Investigador en `ReviewCeishPage.tsx`:** la antigua pestaña "Llenado Investigador (Etapa 1)" (de solo lectura, Sesión 1) se reemplazó por un botón que abre un modal dedicado. Dentro del modal el evaluador no solo audita las respuestas de Etapa 1 anexo por anexo, sino que ahora **puede editarlas** (`isEditingInvestigadorAnexos`), reutilizando el mismo patrón de carga de valores iniciales (`investigadorFormState`) que el resto de formularios dinámicos del motor.
+  * **Verificación:** cambios acotados a UI y store; no se registró una corrida explícita de `tsc` en el mensaje de commit de este tramo (sí quedó verificado indirectamente por la compilación limpia reportada en la Sesión 5 inmediatamente posterior).
+
+### Sesión 5: Remplazo de Formularios por Plantillas de Word (.docx)
 * **Fecha:** 2026-07-10
 * **Motivo:** A pedido explícito del Product Owner para posibilitar la descarga de anexos en el formato oficial exacto (sin perder diagramación ni logos), se migra del sistema de formularios estáticos web a un sistema de plantillas Word oficiales (`.docx`).
 * **Implementación:**
@@ -109,7 +126,7 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
   * **Acciones Opcionales (Anexo 23 y 26):** Los botones de "Declarar Conflicto" y "Dar de Baja" ahora abren modales que renderizan los campos definidos para las plantillas de Word de conflicto (A23) y revocación (A26), permitiendo descargar las actas rellenas y confirmando las acciones de workflow.
   * **Verificación:** Ejecución limpia de `npx tsc -b` sin errores de compilación.
 
-### Sesión 5: Personalización de Anexos, Tipo "Sí o No", y Ajustes Críticos de Workflow
+### Sesión 6: Personalización de Anexos, Tipo "Sí o No", y Ajustes Críticos de Workflow
 * **Fecha:** 2026-07-11
 * **Actividades:**
   * **Nuevo Tipo de Campo "Sí o No"**: Incorporado el tipo `'si-no'` a `CampoTipo` en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts). Diseñado un selector interactivo tipo Pill (botones Sí / No) de alta estética para las interfaces de llenado de alumnos y revisiones de evaluadores.
@@ -138,7 +155,7 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
     * Se corrigieron las dependencias del hook `useEffect` en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) y [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) agregando `anexosTemplates` y `respuestasAnexos`. Ahora el formulario se actualiza inmediatamente cuando un administrador modifica los campos o textos en el CRUD del panel de control.
   * **Verificación:** TypeScript compila limpiamente (`npx tsc --noEmit`) sin advertencias ni fallos.
 
-### Sesión 6: Módulo de Seguimiento de Proyectos y Descarga de Actas para Evaluadores
+### Sesión 7: Módulo de Seguimiento de Proyectos y Descarga de Actas para Evaluadores
 * **Fecha:** 2026-07-11
 * **Actividades:**
   * **Nuevo Módulo de Seguimiento (`EvaluatorSeguimiento.tsx`)**:
@@ -150,3 +167,40 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
     * Registrada la ruta `/evaluador/seguimiento` en [router/index.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/app/router/index.tsx).
     * Añadido el ícono y enlace de navegación "Seguimiento" al menú lateral del evaluador en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx).
   * **Verificación:** Ejecución limpia de `npx tsc --noEmit` confirmando compatibilidad del 100% en TypeScript.
+
+### Sesión 8: Migración del motor CEISH de Zustand+localStorage a PostgreSQL+MinIO
+* **Fecha:** 2026-07-11
+* **Motivo:** A pedido explícito, migrar el almacenamiento del motor configurable (hasta ahora 100% en el navegador: Zustand con `persist` en `localStorage`, y los PDFs/plantillas Word en un cache en memoria `ceishFileCache` que se perdía al recargar) a datos reales y compartidos entre usuarios, reutilizando el mismo patrón ya validado por el flujo legacy de `submissions`/`reviews` (React → `services/*` → `/api/*` en `apiPlugin.ts` → PostgreSQL/MinIO). Antes de implementar se armó un plan explícito (ver histórico de la conversación) con dos decisiones acordadas con el usuario: **(a)** los datos existentes en `localStorage` se descartan y se parte de un `seed.sql` nuevo — es un prototipo, sin datos reales en juego; **(b)** la lógica de negocio (asignación ciega, generación de código, conflicto de interés, transiciones de estado) se mueve al servidor dentro de transacciones, no queda como CRUD delgado con lógica en el cliente.
+* **Alcance:** las 7 entidades del motor (`AnexoTemplate`, `TipoDocumento`, `Documento`, `AsignacionCEISH`, `RespuestaAnexo`, `Escalamiento`, `Notificacion`) migraron completas, en 5 etapas incrementales, cada una verificada por separado antes de pasar a la siguiente.
+
+* **Etapa 1 — Configuración (`ceish_anexo_templates`, `ceish_tipos_documento`):**
+  * Tablas nuevas en `database/schema.sql` con `id TEXT` (no UUID) porque el código de negocio ya referenciaba ids literales como `'anexo-27'`; `preguntas`/`secciones` como JSONB (se leen/escriben siempre como unidad completa, nunca se consultan sueltas — mismo criterio para el resto de campos anidados de toda la migración).
+  * `src/server/queries/ceish/anexoTemplates.ts` y `tiposDocumento.ts`, rutas en el nuevo `src/server/ceishApiRoutes.ts` (extraído de `apiPlugin.ts`, que ya era un if-chain manual largo), y `src/services/ceishService.ts` (nuevo, mapeo DB↔UI igual que `platformService.ts`).
+  * `POST /api/upload` se generalizó (antes solo validaba PDF) para aceptar `.docx`/imágenes; `uploadPdf` → `uploadFile` en `src/lib/minio.ts`.
+  * `ceishStore.ts` perdió el middleware `persist`; `anexosTemplates`/`tiposDocumento` pasan a cargarse desde el servidor vía una nueva acción `cargarConfiguracion()`, disparada una vez desde `AppProviders.tsx`.
+  * Los 15 anexos semilla y el `TipoDocumento` "Investigación" se migraron de `generarEstadoInicial()` (código) a `database/seed.sql` (SQL).
+
+* **Etapa 2 — Documentos (`ceish_documentos`, `ceish_asignaciones`):**
+  * `SEQUENCE ceish_documento_codigo_seq` para el código del trámite — corrige de raíz que el prototipo generaba `codigo` con `documentos.length + 1`, no seguro ante escrituras concurrentes.
+  * El conflicto de interés autor↔evaluador y la asignación ciega ahora consultan la tabla `users` real (`role = 'teacher'`) en vez de un array `evaluadoresSistema` hardcodeado y duplicado 3 veces en el store. Para que la comparación por cédula funcionara con datos reales se agregó la columna `users.cedula`.
+  * `crearDocumento`/`editarDocumento`/`solicitarRevision`/`subirCorreccion` en `src/server/queries/ceish/documentos.ts`, transaccionales.
+  * Los 2 documentos + 1 asignación de ejemplo se migraron a `seed.sql` (mismo criterio que Etapa 1); se agregó `setval()` para no chocar con la secuencia.
+
+* **Etapa 3 — Respuestas de anexo y máquina de estados (`ceish_respuestas_anexo`):**
+  * Una fila por (documento, anexo, versión de archivo) con `UNIQUE` sobre esa clave, así que "borrador → emisión oficial" es un simple `INSERT ... ON CONFLICT DO UPDATE` (mismo comportamiento que el prototipo, que sobrescribía el borrador con la emisión).
+  * `guardarRespuestaAnexo`/`emitirAnexo`/`darseDeBajaRevisor` en `src/server/queries/ceish/respuestas.ts`. `emitirAnexo` replica toda la máquina de estados original (caso especial de `riesgoConfirmado` para `anexo-27`, cronómetro, desactivar asignaciones si `aprobada`/`anulada`).
+  * Los 6 puntos donde una pregunta tipo "archivo" subía a `ceishFileCache` (en `CrearInvestigacionModal`, `SubmissionPage`, `ReviewCeishPage` ×2) pasaron a subir a MinIO real.
+  * **Bug encontrado y corregido:** violación de Rules of Hooks en `ReviewCeishPage.tsx` — 3 `useEffect` vivían después de un `return` condicionado a `documento`. Con datos síncronos esto nunca se notaba; con `documentos` cargando async del servidor, el primer render (sin datos aún) ejecuta menos hooks que los siguientes. Se movieron los 3 efectos antes de los `return` tempranos, autoguardados con `if (!documento) return;`.
+
+* **Etapa 4 — Escalamientos y notificaciones (`ceish_escalamientos`, `ceish_notificaciones`):**
+  * `insertNotificaciones(client, eventos)` en `src/server/queries/ceish/notificaciones.ts`: helper compartido que las acciones de las Etapas 2-3 (`crearDocumento`, `editarDocumento`, `emitirAnexo`, etc.) ya llaman dentro de su propia transacción para persistir de verdad las notificaciones — antes solo las devolvían como datos crudos para que el cliente las reconstruyera en memoria.
+  * **Deuda de la Sesión 3 saldada:** la regla de "congelamiento" (Fase 4.3 — al editar/eliminar un anexo, purgar respuestas obsoletas de trámites activos y notificar) vivía solo en el cliente porque `respuestasAnexos`/`notificaciones` aún no eran server-side. Se movió completa a `updateAnexoTemplate`/`deleteAnexoTemplate` (`anexoTemplates.ts`), transaccional.
+  * `NotificacionesAdminCRUD.tsx`: el array `USUARIOS_SISTEMA` hardcodeado se reemplazó por `/api/users` real.
+  * **Bug encontrado y corregido:** `readJsonBody` en el nuevo `src/server/httpHelpers.ts` (extraído de `apiPlugin.ts`) decodificaba cada chunk del body con `raw += chunk`, lo que corrompe tildes/ñ si un carácter multibyte queda partido entre dos chunks. Se corrigió acumulando `Buffer`s y decodificando una sola vez al final. (El síntoma que lo hizo evidente fue en realidad un problema de cómo Windows/Git Bash pasa argumentos con tildes a `curl` en pruebas manuales — no un bug de la app — pero el fix en `readJsonBody` es una corrección real independiente de eso, confirmada con `fetch()` nativo.)
+
+* **Etapa 5 — Limpieza:**
+  * Borrado `src/store/fileCache.ts` (0 consumidores tras las etapas 3-4).
+  * `POST /api/ceish/reset-demo-data` (nuevo, solo desarrollo): trunca `documentos`/`asignaciones`/`respuestasAnexos`/`escalamientos`/`notificaciones` y reinserta los 2 trámites de ejemplo — deliberadamente NO toca `anexosTemplates`/`tiposDocumento` porque es configuración del admin, no datos de prueba desechables. El botón "Restablecer prototipo" en `AppShell.tsx` ahora llama a este endpoint real en vez de reseedear un store local que ya no existe.
+  * Confirmado que no quedan arrays hardcodeados (`evaluadoresSistema`, `USUARIOS_REGISTRADOS`, `USUARIOS_SISTEMA`, `ADMIN_IDS`) ni referencias a `ceishFileCache` en todo `src/`.
+* **Verificación:** en cada una de las 5 etapas se corrió `npx tsc -b` limpio, `docker compose down -v && up -d` para confirmar que `schema.sql`/`seed.sql` corren sin error sobre un volumen vacío, y una prueba end-to-end con Playwright en navegador real (login → acción → reload completo del navegador + volver a loguear → verificar que el cambio persistió). `npx vite build` (el bundle de producción en sí) corre limpio; `npm run build` completo queda bloqueado por 3 errores de TypeScript preexistentes y no relacionados con esta migración (`setNuevoRiesgoEleccion`, `handleElevarRiesgo`, `handleDarDeBaja` en `ReviewCeishPage.tsx` — código muerto ya presente antes de esta sesión, confirmado con `git stash`).
+* **Estado global tras la migración:** el motor configurable completo (Fases 1-4) corre sobre PostgreSQL + MinIO reales, compartidos entre navegadores/usuarios. El único punto pendiente de todo el dominio v3 sigue siendo el mismo de siempre — la Fase 4.1 (bandeja de admin para resolver escalamientos): el backend y el servicio ya están listos end-to-end, solo falta la pantalla.

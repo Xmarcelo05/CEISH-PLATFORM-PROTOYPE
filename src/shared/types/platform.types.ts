@@ -7,6 +7,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  cedula?: string;
 }
 
 export type SubmissionStatus = 'pending' | 'under-review' | 'reviewed';
@@ -108,8 +109,8 @@ export interface AnexoTemplate {
   nombre: string;
   rol: 'investigador' | 'evaluador';
   preguntas: Pregunta[];
-  wordTemplateName?: string;      // Nombre del archivo de plantilla subido
-  wordTemplateBase64?: string;    // Contenido binario codificado en base64 para docxtemplater
+  wordTemplateName?: string;        // Nombre del archivo de plantilla subido
+  wordTemplateObjectKey?: string;   // Clave del objeto en MinIO (bucket "documents")
 }
 
 export interface AnexoAsignado {

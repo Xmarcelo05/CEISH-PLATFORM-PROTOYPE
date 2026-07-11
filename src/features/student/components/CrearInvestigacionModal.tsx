@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { useCeishStore } from '../../../store/ceishStore';
-import { ceishFileCache } from '../../../store/fileCache';
-import type { Autor, ValorCampo } from '../../../shared/types/platform.types';
+import { ceishService } from '../../../services/ceishService';
+import { platformService } from '../../../shared/services/platformService';
+import type { Autor, ValorCampo, User } from '../../../shared/types/platform.types';
 import '../../student/student.css';
 
 interface Props {
@@ -10,27 +11,24 @@ interface Props {
   investigadorNombre: string;
 }
 
-// Usuarios registrados simulados en la base de datos (con cédula para autocompletado)
-const USUARIOS_REGISTRADOS = [
-  { id: 'c0000000-0000-0000-0000-000000000001', name: 'Juan Pérez', cedula: 'c0000000-0000-0000-0000-000000000001', role: 'student' },
-  { id: 'c0000000-0000-0000-0000-000000000002', name: 'María López', cedula: 'c0000000-0000-0000-0000-000000000002', role: 'student' },
-  { id: 'b0000000-0000-0000-0000-000000000001', name: 'Profesor Demo', cedula: 'b0000000-0000-0000-0000-000000000001', role: 'evaluator', cargo: 'Presidente del Comité' },
-  { id: 'b0000000-0000-0000-0000-000000000002', name: 'Evaluador Alterno CEISH', cedula: 'b0000000-0000-0000-0000-000000000002', role: 'evaluator', cargo: 'Secretario CEISH' },
-  { id: 'b0000000-0000-0000-0000-000000000003', name: 'Dr. Roberto Anchundia', cedula: 'b0000000-0000-0000-0000-000000000003', role: 'evaluator', cargo: 'Vocal Técnico' },
-  { id: 'a0000000-0000-0000-0000-000000000001', name: 'Coordinador Admin', cedula: 'a0000000-0000-0000-0000-000000000001', role: 'admin' }
-];
-
 export function CrearInvestigacionModal({ onCancel, investigadorId, investigadorNombre }: Props) {
   const { crearDocumento, tiposDocumento, anexosTemplates, guardarRespuestaAnexo } = useCeishStore();
+
+  // Usuarios reales (con cédula) para autocompletar coautores por cédula — el
+  // conflicto de interés autor↔evaluador ya lo calcula el servidor al crear el documento.
+  const [usuarios, setUsuarios] = useState<User[]>([]);
+  useEffect(() => {
+    platformService.getUsers().then(setUsuarios).catch(() => setUsuarios([]));
+  }, []);
 
   const [selectedTipoDocId, setSelectedTipoDocId] = useState('');
   const [tema, setTema] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [autores, setAutores] = useState<Autor[]>([]); 
+  const [autores, setAutores] = useState<Autor[]>([]);
   const [riesgo] = useState<'sin-riesgo' | 'riesgo-minimo' | 'riesgo-mayor'>('sin-riesgo');
-  const [conflictos, setConflictos] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estados para el llenado dinámico de anexos en el wizard de creación (Etapa 1)
   const [activeAnexoId, setActiveAnexoId] = useState<string | null>(null);
@@ -60,7 +58,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
 
   const handleCedulaChange = (index: number, cedulaVal: string) => {
     const updated = [...autores];
-    const matched = USUARIOS_REGISTRADOS.find(u => u.cedula === cedulaVal.trim());
+    const matched = usuarios.find(u => u.cedula === cedulaVal.trim());
     updated[index] = {
       cedula: cedulaVal,
       nombre: matched ? matched.name : ''
@@ -70,7 +68,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
 
   const handleNombreChange = (index: number, nombreVal: string) => {
     const updated = [...autores];
-    const matched = USUARIOS_REGISTRADOS.find(u => u.cedula === updated[index].cedula.trim());
+    const matched = usuarios.find(u => u.cedula === updated[index].cedula.trim());
     if (!matched) {
       updated[index].nombre = nombreVal;
       setAutores(updated);
@@ -141,7 +139,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
       });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTipoDocId || !tema.trim() || !descripcion.trim() || !file) {
       setError('Por favor complete todos los campos obligatorios y suba el archivo PDF.');
@@ -154,67 +152,65 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
     }
 
     const coAutoresFiltrados = autores.filter(a => a.cedula.trim() !== '');
+    // La cédula real del investigador (no su id) es la que el servidor cruza
+    // contra users.cedula para detectar conflicto de interés con evaluadores.
+    const investigadorCedula = usuarios.find(u => u.id === investigadorId)?.cedula ?? investigadorId;
     const listaAutores: Autor[] = [
-      { cedula: investigadorId, nombre: investigadorNombre },
+      { cedula: investigadorCedula, nombre: investigadorNombre },
       ...coAutoresFiltrados
     ];
 
-    const conflictosDeclarados = [...conflictos];
-    listaAutores.forEach(autor => {
-      const matchEvaluador = USUARIOS_REGISTRADOS.find(u => u.cedula === autor.cedula && u.role === 'evaluator');
-      if (matchEvaluador && !conflictosDeclarados.includes(matchEvaluador.id)) {
-        conflictosDeclarados.push(matchEvaluador.id);
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      // 1. Subir el PDF a MinIO y crear el documento (el servidor calcula
+      // conflicto de interés real y hace la asignación ciega en una transacción)
+      const { documentPath } = await ceishService.uploadFile(file);
+      const documento = await crearDocumento(
+        selectedTipoDocId,
+        tema.trim(),
+        descripcion.trim(),
+        listaAutores,
+        riesgo,
+        [],
+        investigadorId,
+        investigadorNombre,
+        file.name,
+        documentPath
+      );
+
+      // 2. Guardar respuestas de los anexos completados
+      if (etapaCreacion) {
+        const versionArchivoId = documento.versionesArchivo[0].id;
+        etapaCreacion.anexos.forEach(an => {
+          const answers = respuestasForm[an.anexoTemplateId];
+          if (answers) {
+            const valores: ValorCampo[] = Object.keys(answers).map(pregId => ({
+              campoId: pregId,
+              valor: answers[pregId]
+            }));
+
+            guardarRespuestaAnexo({
+              anexoTemplateId: an.anexoTemplateId,
+              documentoId: documento.id,
+              seccionId: etapaCreacion.id,
+              versionArchivoId,
+              emitidoPorId: investigadorId,
+              emitidoPorNombre: investigadorNombre,
+              valores,
+              comentariosAnotados: []
+            });
+          }
+        });
       }
-    });
 
-    const docId = 'doc-' + Date.now();
-    const fileId = 'ver-' + Date.now();
-    ceishFileCache[fileId] = file;
-
-    // 1. Crear documento principal
-    crearDocumento(
-      selectedTipoDocId,
-      tema.trim(),
-      descripcion.trim(),
-      listaAutores,
-      riesgo,
-      conflictosDeclarados,
-      investigadorId,
-      investigadorNombre,
-      file.name,
-      fileId,
-      docId,
-      fileId
-    );
-
-    // 2. Guardar respuestas de los anexos completados
-    if (etapaCreacion) {
-      etapaCreacion.anexos.forEach(an => {
-        const answers = respuestasForm[an.anexoTemplateId];
-        if (answers) {
-          const valores: ValorCampo[] = Object.keys(answers).map(pregId => ({
-            campoId: pregId,
-            valor: answers[pregId]
-          }));
-
-          guardarRespuestaAnexo({
-            anexoTemplateId: an.anexoTemplateId,
-            documentoId: docId,
-            seccionId: etapaCreacion.id,
-            versionArchivoId: fileId,
-            emitidoPorId: investigadorId,
-            emitidoPorNombre: investigadorNombre,
-            valores,
-            comentariosAnotados: []
-          });
-        }
-      });
+      window.alert('Trámite registrado y enviado exitosamente. Se asignó automáticamente un revisor de forma ciega.');
+      onCancel();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al registrar el trámite.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-
-
-    window.alert('Trámite registrado y enviado exitosamente. Se asignó automáticamente un revisor de forma ciega.');
-    onCancel();
   };
 
 
@@ -297,7 +293,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                   
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '6px' }}>
                     {autores.map((autor, idx) => {
-                      const match = USUARIOS_REGISTRADOS.find(u => u.cedula === autor.cedula.trim());
+                      const match = usuarios.find(u => u.cedula === autor.cedula.trim());
                       return (
                         <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center', background: '#f8fafc', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                           <input
@@ -442,7 +438,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                                       <input
                                         type="file"
                                         accept=".pdf,application/pdf,image/*"
-                                        onChange={(e) => {
+                                        onChange={async (e) => {
                                           const f = e.target.files?.[0] || null;
                                           if (!f) return;
                                           const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
@@ -451,9 +447,12 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                                             window.alert('Solo se permiten archivos en formato PDF o imagen.');
                                             return;
                                           }
-                                          const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                                          ceishFileCache[fileKey] = f;
-                                          handlePreguntaChange(template.id, p.id, { documentName: f.name, documentPath: fileKey });
+                                          try {
+                                            const { documentPath } = await ceishService.uploadFile(f);
+                                            handlePreguntaChange(template.id, p.id, { documentName: f.name, documentPath });
+                                          } catch (err) {
+                                            window.alert(err instanceof Error ? err.message : 'Error al subir el archivo.');
+                                          }
                                         }}
                                         style={{ fontSize: '12px' }}
                                       />
@@ -536,13 +535,13 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
               <button
                 type="submit"
                 className="eval-btn eval-btn--primary"
-                disabled={!tema.trim() || !descripcion.trim() || !file || !isEtapa1Completa()}
+                disabled={!tema.trim() || !descripcion.trim() || !file || !isEtapa1Completa() || isSubmitting}
                 style={{
-                  opacity: (!tema.trim() || !descripcion.trim() || !file || !isEtapa1Completa()) ? 0.5 : 1,
-                  cursor: (!tema.trim() || !descripcion.trim() || !file || !isEtapa1Completa()) ? 'not-allowed' : 'pointer'
+                  opacity: (!tema.trim() || !descripcion.trim() || !file || !isEtapa1Completa() || isSubmitting) ? 0.5 : 1,
+                  cursor: (!tema.trim() || !descripcion.trim() || !file || !isEtapa1Completa() || isSubmitting) ? 'not-allowed' : 'pointer'
                 }}
               >
-                Registrar Proyecto y Solicitar Revisión
+                {isSubmitting ? 'Registrando…' : 'Registrar Proyecto y Solicitar Revisión'}
               </button>
             )}
           </div>

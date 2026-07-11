@@ -183,7 +183,7 @@ export function AppShell() {
                         <li
                           key={n.id}
                           className={cn('shell__notif-item', !n.leida && 'shell__notif-item--unread')}
-                          onClick={() => marcarNotificacionLeida(n.id)}
+                          onClick={() => marcarNotificacionLeida(n.id).catch(() => {})}
                         >
                           <p className="shell__notif-msg">{n.mensaje}</p>
                           <span className="shell__notif-meta">
@@ -221,12 +221,16 @@ export function AppShell() {
           </div>
           <button 
             className="shell__logout" 
-            onClick={() => {
-              if (window.confirm('¿Deseas restablecer todos los datos del prototipo CEISH? Esto borrará el historial de pruebas.')) {
-                useCeishStore.getState().resetearDatos();
-                window.location.reload();
+            onClick={async () => {
+              if (window.confirm('¿Deseas restablecer los datos de demo del prototipo CEISH (trámites, respuestas, notificaciones)? Esto no afecta la configuración de anexos/tipos de documento.')) {
+                try {
+                  await useCeishStore.getState().resetearDatos();
+                  window.location.reload();
+                } catch (err) {
+                  window.alert(err instanceof Error ? err.message : 'Error al restablecer los datos de demo.');
+                }
               }
-            }} 
+            }}
             title="Restablecer prototipo"
             style={{ marginRight: '8px', color: '#eab308' }}
           >

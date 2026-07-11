@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/authStore';
 import { useCeishStore } from '../../../store/ceishStore';
-import { ceishFileCache } from '../../../store/fileCache';
+import { ceishService } from '../../../services/ceishService';
 import { usePDFViewer } from '../../evaluation/hooks/usePDFViewer';
 import { PDFViewer } from '../../evaluation/components/PDFViewer/PDFViewer';
 import { generateDocx } from '../../../utils/docxGenerator';
@@ -74,17 +74,17 @@ export function ReviewCeishPage() {
   const [editingAnotacionTexto, setEditingAnotacionTexto] = useState('');
   const [showHistorialRondasModal, setShowHistorialRondasModal] = useState(false);
 
-  // Visor PDF
+  // Visor PDF (se sirve desde MinIO vía el mismo origen)
   const pdf = usePDFViewer();
   const { loadFile } = pdf;
   const latestVersion = documento?.versionesArchivo.slice(-1)[0];
-  const fileObj = latestVersion ? ceishFileCache[latestVersion.documentPath] : null;
+  const pdfUrl = latestVersion ? ceishService.getFileRawUrl(latestVersion.documentPath) : null;
 
   useEffect(() => {
-    if (fileObj) {
-      loadFile(fileObj);
+    if (pdfUrl) {
+      loadFile(pdfUrl);
     }
-  }, [fileObj, loadFile]);
+  }, [pdfUrl, loadFile]);
 
   // Regla de Reset de Estado al cargar una nueva investigación o versión de archivo
   useEffect(() => {
@@ -95,6 +95,85 @@ export function ReviewCeishPage() {
     setEscalamientoComentario('');
     setRespuestasForm({});
   }, [investigacionId, latestVersion?.id]);
+
+  // NOTA: los 3 efectos siguientes viven aquí (antes de los `return` tempranos
+  // de abajo) a propósito — `documentos` ahora se carga async desde el
+  // servidor, así que en el primer render `documento` puede ser `undefined`
+  // y estos hooks deben ejecutarse siempre en el mismo orden en cada render
+  // (Rules of Hooks). Cada uno se autoguarda con `if (!documento) return;`.
+
+  // Cargar respuestas de los anexos del investigador al formulario de edición local
+  useEffect(() => {
+    if (!documento) return;
+    if (selectedInvestigadorAnexoId && latestVersion) {
+      const respGuardada = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === selectedInvestigadorAnexoId && r.versionArchivoId === latestVersion.id
+      );
+
+      const iniciales: Record<string, any> = {};
+      const template = anexosTemplates.find(t => t.id === selectedInvestigadorAnexoId);
+
+      if (respGuardada) {
+        respGuardada.valores.forEach(v => {
+          iniciales[v.campoId] = v.valor;
+        });
+        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
+        template?.preguntas.forEach(p => {
+          if (iniciales[p.id] === undefined) {
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          }
+        });
+      } else {
+        template?.preguntas.forEach(p => {
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+        });
+      }
+      setInvestigadorFormState(iniciales);
+    }
+  }, [documento, selectedInvestigadorAnexoId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
+
+  // Cargar borrador/respuestas del anexo activo en memoria al cambiar de pestaña
+  useEffect(() => {
+    if (!documento) return;
+    if (activeAnexoId && latestVersion) {
+      const respGuardada = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
+      );
+
+      const iniciales: Record<string, any> = {};
+      const template = anexosTemplates.find(t => t.id === activeAnexoId);
+
+      if (respGuardada) {
+        respGuardada.valores.forEach(v => {
+          iniciales[v.campoId] = v.valor;
+        });
+        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
+        template?.preguntas.forEach(p => {
+          if (iniciales[p.id] === undefined) {
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          }
+        });
+      } else {
+        template?.preguntas.forEach(p => {
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+        });
+      }
+      setRespuestasForm(iniciales);
+    }
+  }, [documento, activeAnexoId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
+
+  // Cargar observaciones o respuestas a nivel de página del PDF para este anexo si ya fueron guardadas
+  useEffect(() => {
+    if (!documento) return;
+    if (activeAnexoId && latestVersion) {
+      const respGuardada = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
+      );
+      if (respGuardada) {
+        setAnotaciones(respGuardada.comentariosAnotados.map(c => ({ ...c })));
+      }
+    }
+  }, [documento, activeAnexoId, latestVersion?.id]);
 
   // Si no se encuentra el documento
   if (!documento) {
@@ -124,80 +203,10 @@ export function ReviewCeishPage() {
     return false;
   }) || tipoDoc.secciones[1]; // Fallback a la segunda sección por seguridad
 
-  // Cargar respuestas de los anexos del investigador al formulario de edición local
-  useEffect(() => {
-    if (selectedInvestigadorAnexoId && latestVersion && documento) {
-      const respGuardada = respuestasAnexos.find(
-        r => r.documentoId === documento.id && r.anexoTemplateId === selectedInvestigadorAnexoId && r.versionArchivoId === latestVersion.id
-      );
-
-      const iniciales: Record<string, any> = {};
-      const template = anexosTemplates.find(t => t.id === selectedInvestigadorAnexoId);
-
-      if (respGuardada) {
-        respGuardada.valores.forEach(v => {
-          iniciales[v.campoId] = v.valor;
-        });
-        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
-        template?.preguntas.forEach(p => {
-          if (iniciales[p.id] === undefined) {
-            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
-          }
-        });
-      } else {
-        template?.preguntas.forEach(p => {
-          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
-        });
-      }
-      setInvestigadorFormState(iniciales);
-    }
-  }, [selectedInvestigadorAnexoId, latestVersion?.id, documento?.id, respuestasAnexos, anexosTemplates]);
-
   // Autoseleccionar el primer anexo asignado a la sección
   if (!activeAnexoId && activeSeccion && activeSeccion.anexos.length > 0) {
     setActiveAnexoId(activeSeccion.anexos[0].anexoTemplateId);
   }
-
-  // Cargar borrador/respuestas del anexo activo en memoria al cambiar de pestaña
-  useEffect(() => {
-    if (activeAnexoId && latestVersion) {
-      const respGuardada = respuestasAnexos.find(
-        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
-      );
-
-      const iniciales: Record<string, any> = {};
-      const template = anexosTemplates.find(t => t.id === activeAnexoId);
-
-      if (respGuardada) {
-        respGuardada.valores.forEach(v => {
-          iniciales[v.campoId] = v.valor;
-        });
-        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
-        template?.preguntas.forEach(p => {
-          if (iniciales[p.id] === undefined) {
-            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
-          }
-        });
-      } else {
-        template?.preguntas.forEach(p => {
-          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
-        });
-      }
-      setRespuestasForm(iniciales);
-    }
-  }, [activeAnexoId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
-
-  // Cargar observaciones o respuestas a nivel de página del PDF para este anexo si ya fueron guardadas
-  useEffect(() => {
-    if (activeAnexoId && latestVersion) {
-      const respGuardada = respuestasAnexos.find(
-        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
-      );
-      if (respGuardada) {
-        setAnotaciones(respGuardada.comentariosAnotados.map(c => ({ ...c })));
-      }
-    }
-  }, [activeAnexoId, latestVersion?.id]);
 
   // Manejar cambio de input en preguntas
   const handlePreguntaChange = (preguntaId: string, valor: any) => {
@@ -243,7 +252,7 @@ export function ReviewCeishPage() {
   };
 
   // Guardar Borrador
-  const handleGuardarBorrador = () => {
+  const handleGuardarBorrador = async () => {
     if (!activeAnexoId || !latestVersion) return;
 
     const valores: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
@@ -251,18 +260,21 @@ export function ReviewCeishPage() {
       valor: respuestasForm[key]
     }));
 
-    guardarRespuestaAnexo({
-      anexoTemplateId: activeAnexoId,
-      documentoId: documento.id,
-      seccionId: activeSeccion.id,
-      versionArchivoId: latestVersion.id,
-      emitidoPorId: currentUser.id,
-      emitidoPorNombre: currentUser.name,
-      valores,
-      comentariosAnotados: anotaciones
-    });
-
-    window.alert('Respuestas y anotaciones de página guardadas en borrador.');
+    try {
+      await guardarRespuestaAnexo({
+        anexoTemplateId: activeAnexoId,
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: latestVersion.id,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores,
+        comentariosAnotados: anotaciones
+      });
+      window.alert('Respuestas y anotaciones de página guardadas en borrador.');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al guardar el borrador.');
+    }
   };
 
   // ============================================================================
@@ -270,7 +282,7 @@ export function ReviewCeishPage() {
   // ============================================================================
 
   // ACCIÓN 1: Confirmar Sin Riesgo (Emite Anexo 27 y Carta Exención Anexo 11)
-  const handleConfirmarExencion = () => {
+  const handleConfirmarExencion = async () => {
     const justificacionText = respuestasForm[Object.keys(respuestasForm).slice(-1)[0]] || '';
     if (!justificacionText.trim()) {
       return alert('Debe completar la justificación/criterio final del anexo de estratificación.');
@@ -286,26 +298,30 @@ export function ReviewCeishPage() {
       valor: respuestasForm[key]
     }));
 
-    // 1. Emitir Anexo 27 (manteniendo en la etapa actual de estratificacion)
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-27',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: valoresA27,
-        comentariosAnotados: []
-      },
-      'coincide',
-      'estratificacion',
-      'Estratificación de riesgo completada: Confirmado sin riesgo.',
-      'sin-riesgo'
-    );
+    try {
+      // 1. Emitir Anexo 27 (manteniendo en la etapa actual de estratificacion)
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-27',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores: valoresA27,
+          comentariosAnotados: []
+        },
+        'coincide',
+        'estratificacion',
+        'Estratificación de riesgo completada: Confirmado sin riesgo.',
+        'sin-riesgo'
+      );
 
-    window.alert('Estratificación registrada. Proceda a llenar el Formato de Carta de Exención (Anexo 11) para finalizar esta etapa.');
-    setActiveAnexoId('anexo-11');
+      window.alert('Estratificación registrada. Proceda a llenar el Formato de Carta de Exención (Anexo 11) para finalizar esta etapa.');
+      setActiveAnexoId('anexo-11');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al confirmar la estratificación.');
+    }
   };
 
   // ACCIÓN 2: Elevar Riesgo (Fuera de Alcance del Prototipo)
@@ -346,10 +362,10 @@ export function ReviewCeishPage() {
   // ============================================================================
   // RELLENO DE PLANTILLAS WORD (docxtemplater)
   // ============================================================================
-  const handleDownloadWordTemplate = (anexoId: string) => {
+  const handleDownloadWordTemplate = async (anexoId: string) => {
     const template = anexosTemplates.find(t => t.id === anexoId);
     if (!template) return;
-    if (!template.wordTemplateBase64) {
+    if (!template.wordTemplateObjectKey) {
       alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
       return;
     }
@@ -381,13 +397,18 @@ export function ReviewCeishPage() {
     });
 
     const fileName = `Anexo_${template.numero}_${documento?.codigo || 'CEISH'}`;
-    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+    try {
+      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
+      generateDocx(bytes, dataToInject, fileName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
+    }
   };
 
-  const handleDownloadConflictoWord = () => {
+  const handleDownloadConflictoWord = async () => {
     const template = anexosTemplates.find(t => t.id === 'anexo-23');
     if (!template) return;
-    if (!template.wordTemplateBase64) {
+    if (!template.wordTemplateObjectKey) {
       alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
       return;
     }
@@ -403,13 +424,18 @@ export function ReviewCeishPage() {
     };
 
     const fileName = `Anexo_23_Conflicto_${documento?.codigo || 'CEISH'}`;
-    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+    try {
+      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
+      generateDocx(bytes, dataToInject, fileName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
+    }
   };
 
-  const handleDownloadBajaWord = () => {
+  const handleDownloadBajaWord = async () => {
     const template = anexosTemplates.find(t => t.id === 'anexo-26');
     if (!template) return;
-    if (!template.wordTemplateBase64) {
+    if (!template.wordTemplateObjectKey) {
       alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
       return;
     }
@@ -425,13 +451,18 @@ export function ReviewCeishPage() {
     };
 
     const fileName = `Anexo_26_Baja_${documento?.codigo || 'CEISH'}`;
-    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+    try {
+      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
+      generateDocx(bytes, dataToInject, fileName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
+    }
   };
 
-  const handleDownloadStudentWordTemplate = (anexoId: string) => {
+  const handleDownloadStudentWordTemplate = async (anexoId: string) => {
     const template = anexosTemplates.find(t => t.id === anexoId);
     if (!template) return;
-    if (!template.wordTemplateBase64) {
+    if (!template.wordTemplateObjectKey) {
       alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
       return;
     }
@@ -466,48 +497,61 @@ export function ReviewCeishPage() {
     });
 
     const fileName = `Anexo_${template.numero}_${documento?.codigo || 'CEISH'}`;
-    generateDocx(template.wordTemplateBase64, dataToInject, fileName);
+    try {
+      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
+      generateDocx(bytes, dataToInject, fileName);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
+    }
   };
 
-  const handleDarDeBajaConfirm = () => {
+  const handleDarDeBajaConfirm = async () => {
     if (!bajaMotivo.trim()) {
       return alert('Debe especificar la causa de la baja definitiva.');
     }
     const versionId = latestVersion?.id || '';
 
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-26',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: [
-          { campoId: 'a26_c1', valor: bajaMotivo.trim() },
-          { campoId: 'a26_c2', valor: bajaDeclaracion }
-        ],
-        comentariosAnotados: []
-      },
-      'baja',
-      'anulada',
-      `Proyecto dado de baja definitiva del CEISH. Causa: ${bajaMotivo.trim()}`
-    );
+    try {
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-26',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores: [
+            { campoId: 'a26_c1', valor: bajaMotivo.trim() },
+            { campoId: 'a26_c2', valor: bajaDeclaracion }
+          ],
+          comentariosAnotados: []
+        },
+        'baja',
+        'anulada',
+        `Proyecto dado de baja definitiva del CEISH. Causa: ${bajaMotivo.trim()}`
+      );
 
-    window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
-    setShowBajaModal(false);
-    navigate('/evaluador');
+      window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
+      setShowBajaModal(false);
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al dar de baja el proyecto.');
+    }
   };
 
   // ACCIÓN 3: Inhibición por Conflicto (Anexo 23)
-  const handleDeclararConflicto = () => {
+  const handleDeclararConflicto = async () => {
     if (!conflictoComentario.trim()) {
       return alert('Describa detalladamente la causa de su conflicto de interés.');
     }
 
-    darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, conflictoComentario.trim());
-    window.alert('Se ha registrado su conflicto de interés (Anexo 23). La plataforma lo ha retirado de este proyecto y asignado otro revisor.');
-    navigate('/evaluador');
+    try {
+      await darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, conflictoComentario.trim());
+      window.alert('Se ha registrado su conflicto de interés (Anexo 23). La plataforma lo ha retirado de este proyecto y asignado otro revisor.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al declarar el conflicto de interés.');
+    }
   };
 
   // ACCIÓN 3.5: Inhibición Directa desde Pestaña Anexo 23
@@ -530,22 +574,26 @@ export function ReviewCeishPage() {
     return !tieneTextoLibreVacio;
   };
 
-  const handleDeclararConflictoDirect = () => {
+  const handleDeclararConflictoDirect = async () => {
     if (!isAnexo23Valido()) return;
-    
+
     if (!window.confirm('¿Está seguro de que desea declarar su conflicto de interés formalmente (Anexo 23)? Esto lo desvinculará del trámite.')) {
       return;
     }
 
     const template = anexosTemplates.find(t => t.id === 'anexo-23');
     if (!template) return;
-    
+
     const qTexto = template.preguntas.find(p => p.tipo === 'texto-libre' || p.key === 'observaciones');
     const textoVal = qTexto ? respuestasForm[qTexto.id] : '';
-    
-    darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, textoVal.trim());
-    window.alert('Se ha registrado su conflicto de interés (Anexo 23). El proyecto pasará a la siguiente etapa (Revisión Técnica) con un nuevo revisor asignado.');
-    navigate('/evaluador');
+
+    try {
+      await darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, textoVal.trim());
+      window.alert('Se ha registrado su conflicto de interés (Anexo 23). El proyecto pasará a la siguiente etapa (Revisión Técnica) con un nuevo revisor asignado.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al declarar el conflicto de interés.');
+    }
   };
 
   // ACCIÓN 1.5: Finalizar Exención Ética (Anexo 11)
@@ -571,98 +619,110 @@ export function ReviewCeishPage() {
     return !tieneTextoLibreVacio;
   };
 
-  const handleCompletarExencionEtapa = () => {
+  const handleCompletarExencionEtapa = async () => {
     if (!isAnexo11Valido()) return;
-    
+
     if (!window.confirm('¿Está seguro de que desea emitir la Carta de Exención Ética (Anexo 11) y avanzar el proyecto a la etapa de Revisión Técnica?')) {
       return;
     }
 
     const template = anexosTemplates.find(t => t.id === 'anexo-11');
     if (!template) return;
-    
+
     const versionId = latestVersion?.id || '';
     const valores = template.preguntas.map(p => ({
       campoId: p.id,
       valor: respuestasForm[p.id]
     }));
-    
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-11',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: valores,
-        comentariosAnotados: []
-      },
-      'aprobado',
-      'revision-tecnica',
-      'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 2).',
-      'sin-riesgo'
-    );
-    
-    window.alert('Se ha emitido la exención de revisión ética (Anexo 11). Trámite pasa a Revisión Técnica.');
-    navigate('/evaluador');
+
+    try {
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-11',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores: valores,
+          comentariosAnotados: []
+        },
+        'aprobado',
+        'revision-tecnica',
+        'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 2).',
+        'sin-riesgo'
+      );
+
+      window.alert('Se ha emitido la exención de revisión ética (Anexo 11). Trámite pasa a Revisión Técnica.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al emitir la carta de exención.');
+    }
   };
 
   // ACCIÓN 4: Devolver para Observaciones (Etapa 2)
-  const handleDevolverInvestigador = () => {
+  const handleDevolverInvestigador = async () => {
     if (!devolucionComentario.trim()) {
       return alert('Debe ingresar un comentario indicando las observaciones.');
     }
 
     const versionId = latestVersion?.id || '';
 
-    // Emitir Anexo 27 con observaciones
-    emitirAnexo(
-      {
-        anexoTemplateId: activeAnexoId || 'anexo-27',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: Object.keys(respuestasForm).map(key => ({ campoId: key, valor: respuestasForm[key] })),
-        comentariosAnotados: []
-      },
-      'con-observaciones',
-      'creada',
-      `Proyecto devuelto al Investigador para correcciones. Motivo: ${devolucionComentario}`
-    );
+    try {
+      // Emitir Anexo 27 con observaciones
+      await emitirAnexo(
+        {
+          anexoTemplateId: activeAnexoId || 'anexo-27',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores: Object.keys(respuestasForm).map(key => ({ campoId: key, valor: respuestasForm[key] })),
+          comentariosAnotados: []
+        },
+        'con-observaciones',
+        'creada',
+        `Proyecto devuelto al Investigador para correcciones. Motivo: ${devolucionComentario}`
+      );
 
-    window.alert('Proyecto devuelto al investigador en estado Borrador.');
-    navigate('/evaluador');
+      window.alert('Proyecto devuelto al investigador en estado Borrador.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al devolver el proyecto al investigador.');
+    }
   };
 
   // ACCIÓN 5: Escalar al Administrador
-  const handleEscalarAdmin = () => {
+  const handleEscalarAdmin = async () => {
     if (!escalamientoComentario.trim()) {
       return alert('Escriba la causa del escalamiento.');
     }
 
-    // Guardar borrador del anexo primero
-    handleGuardarBorrador();
+    try {
+      // Guardar borrador del anexo primero
+      await handleGuardarBorrador();
 
-    // Encontrar borrador guardado para ligarlo
-    const versionId = latestVersion?.id || '';
-    const resp = respuestasAnexos.find(
-      r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === versionId
-    );
+      // Encontrar borrador guardado para ligarlo
+      const versionId = latestVersion?.id || '';
+      const resp = respuestasAnexos.find(
+        r => r.documentoId === documento.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === versionId
+      );
 
-    crearEscalamiento(
-      documento.id,
-      activeSeccion.id,
-      activeAnexoId || '',
-      escalamientoComentario.trim(),
-      resp?.id || ''
-    );
+      await crearEscalamiento(
+        documento.id,
+        activeSeccion.id,
+        activeAnexoId || '',
+        escalamientoComentario.trim(),
+        resp?.id || ''
+      );
 
-    window.alert('Escalamiento registrado. El administrador revisará y editará el anexo. El proceso sigue corriendo en paralelo.');
-    setShowEscalarModal(false);
-    setEscalamientoComentario('');
+      window.alert('Escalamiento registrado. El administrador revisará y editará el anexo. El proceso sigue corriendo en paralelo.');
+      setShowEscalarModal(false);
+      setEscalamientoComentario('');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al registrar el escalamiento.');
+    }
   };
 
   // ============================================================================
@@ -686,7 +746,7 @@ export function ReviewCeishPage() {
     return !tieneTextoLibreVacio;
   };
 
-  const handleAprobarMetodologico = () => {
+  const handleAprobarMetodologico = async () => {
     if (!isAnexo12Valido()) return;
 
     if (!window.confirm('¿Está seguro de que desea aprobar técnicamente el Anexo 12 y avanzar a la Resolución Final (Anexo 13)?')) {
@@ -699,25 +759,29 @@ export function ReviewCeishPage() {
       valor: respuestasForm[key]
     }));
 
-    // Emitir Anexo 12 con resultado aprobado, pero mantener en revisión técnica
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-12',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: valoresA12,
-        comentariosAnotados: []
-      },
-      'aprobado',
-      'revision-tecnica',
-      'Evaluación técnica del Anexo 12 aprobada. Continuando a la emisión de la Resolución (Anexo 13).'
-    );
+    try {
+      // Emitir Anexo 12 con resultado aprobado, pero mantener en revisión técnica
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-12',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores: valoresA12,
+          comentariosAnotados: []
+        },
+        'aprobado',
+        'revision-tecnica',
+        'Evaluación técnica del Anexo 12 aprobada. Continuando a la emisión de la Resolución (Anexo 13).'
+      );
 
-    window.alert('Evaluación técnica del Anexo 12 aprobada con éxito. Proceda a llenar la Resolución (Anexo 13).');
-    setActiveAnexoId('anexo-13');
+      window.alert('Evaluación técnica del Anexo 12 aprobada con éxito. Proceda a llenar la Resolución (Anexo 13).');
+      setActiveAnexoId('anexo-13');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al aprobar el Anexo 12.');
+    }
   };
 
   // Validaciones y triggers para Anexo 13 y Anexo 26
@@ -743,7 +807,7 @@ export function ReviewCeishPage() {
     return !tieneTextoLibreVacio;
   };
 
-  const handleCompletarAprobacionFinal = () => {
+  const handleCompletarAprobacionFinal = async () => {
     if (!isAnexo13Valido()) return;
 
     if (!window.confirm('¿Está seguro de que desea emitir la Resolución de Aprobación Final (Anexo 13) y finalizar el trámite del proyecto?')) {
@@ -759,25 +823,29 @@ export function ReviewCeishPage() {
       valor: respuestasForm[p.id]
     }));
 
-    // Emitir Anexo 13 y cambiar estado final a 'aprobada'
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-13',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores,
-        comentariosAnotados: []
-      },
-      'aprobado',
-      'aprobada',
-      'Emisión oficial de la Resolución de Aprobación del CEISH.'
-    );
+    try {
+      // Emitir Anexo 13 y cambiar estado final a 'aprobada'
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-13',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores,
+          comentariosAnotados: []
+        },
+        'aprobado',
+        'aprobada',
+        'Emisión oficial de la Resolución de Aprobación del CEISH.'
+      );
 
-    window.alert('Resolución de Aprobación emitida con éxito (Anexo 13). Trámite finalizado.');
-    navigate('/evaluador');
+      window.alert('Resolución de Aprobación emitida con éxito (Anexo 13). Trámite finalizado.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al emitir la resolución final.');
+    }
   };
 
   const isAnexo26Valido = () => {
@@ -795,7 +863,7 @@ export function ReviewCeishPage() {
     return !tieneTextoLibreVacio;
   };
 
-  const handleCompletarBajaFinal = () => {
+  const handleCompletarBajaFinal = async () => {
     if (!isAnexo26Valido()) return;
 
     if (!window.confirm('¿Está seguro de que desea DAR DE BAJA esta investigación definitivamente? Esta acción es irreversible y archivará el expediente.')) {
@@ -811,29 +879,33 @@ export function ReviewCeishPage() {
       valor: respuestasForm[p.id]
     }));
 
-    // Emitir Anexo 26 y cambiar estado final a 'anulada'
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-26',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores,
-        comentariosAnotados: []
-      },
-      'baja',
-      'anulada',
-      'Proyecto dado de baja o suspendido oficialmente.'
-    );
+    try {
+      // Emitir Anexo 26 y cambiar estado final a 'anulada'
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-26',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores,
+          comentariosAnotados: []
+        },
+        'baja',
+        'anulada',
+        'Proyecto dado de baja o suspendido oficialmente.'
+      );
 
-    window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
-    navigate('/evaluador');
+      window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al dar de baja el proyecto.');
+    }
   };
 
   // ACCIÓN B: No Aprobar (Devolver con observaciones, mantiene revisión técnica)
-  const handleNoAprobarDevolver = () => {
+  const handleNoAprobarDevolver = async () => {
     if (anotaciones.length === 0) return;
 
     if (!window.confirm('¿Está seguro de que desea no aprobar el proyecto y devolverlo al investigador con observaciones?')) {
@@ -846,25 +918,29 @@ export function ReviewCeishPage() {
       valor: respuestasForm[key]
     }));
 
-    // Emitir Anexo 12 con observaciones, mantiene estado 'revision-tecnica'
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-12',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: valoresA12,
-        comentariosAnotados: anotaciones // Guardamos la colección de observaciones detallando página
-      },
-      'con-observaciones',
-      'revision-tecnica', // Mantiene el estado en revisión técnica
-      'No aprobado en esta ronda. Proyecto devuelto al investigador con observaciones metodológicas.'
-    );
+    try {
+      // Emitir Anexo 12 con observaciones, mantiene estado 'revision-tecnica'
+      await emitirAnexo(
+        {
+          anexoTemplateId: 'anexo-12',
+          documentoId: documento.id,
+          seccionId: activeSeccion.id,
+          versionArchivoId: versionId,
+          emitidoPorId: currentUser.id,
+          emitidoPorNombre: currentUser.name,
+          valores: valoresA12,
+          comentariosAnotados: anotaciones // Guardamos la colección de observaciones detallando página
+        },
+        'con-observaciones',
+        'revision-tecnica', // Mantiene el estado en revisión técnica
+        'No aprobado en esta ronda. Proyecto devuelto al investigador con observaciones metodológicas.'
+      );
 
-    window.alert('Proyecto devuelto con observaciones técnicas. Se mantiene en revisión técnica y el investigador ya puede cargar su corrección.');
-    navigate('/evaluador');
+      window.alert('Proyecto devuelto con observaciones técnicas. Se mantiene en revisión técnica y el investigador ya puede cargar su corrección.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al devolver el proyecto con observaciones.');
+    }
   };
 
   // ACCIÓN C: Dar de Baja Proyecto (Anexo 26)
@@ -893,9 +969,9 @@ export function ReviewCeishPage() {
         </div>
 
         <div className="eval-pdf-container">
-          {fileObj ? (
+          {pdfUrl ? (
             <PDFViewer
-              file={fileObj}
+              file={pdfUrl}
               currentPage={pdf.currentPage}
               totalPages={pdf.totalPages}
               zoom={pdf.zoom}
@@ -914,9 +990,8 @@ export function ReviewCeishPage() {
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
               </svg>
-              <h4>Documento no disponible tras recarga</h4>
-              <p>En este prototipo, el archivo PDF subido en memoria se limpia del caché al refrescar el navegador.</p>
-              <p className="highlight">Por favor, vaya al dashboard del Investigador y vuelva a subir el archivo para esta prueba.</p>
+              <h4>Sin documento asociado</h4>
+              <p>Este trámite todavía no tiene ninguna versión de archivo cargada.</p>
             </div>
           )}
         </div>
@@ -1032,7 +1107,7 @@ export function ReviewCeishPage() {
                       <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#1e293b', flex: 1 }}>
                         Anexo {template.numero}: {template.nombre}
                       </h4>
-                      {template.wordTemplateBase64 && (
+                      {template.wordTemplateObjectKey && (
                         <button
                           type="button"
                           className="eval-btn eval-btn--sm eval-btn--primary"
@@ -1068,7 +1143,7 @@ export function ReviewCeishPage() {
                               <input
                                 type="file"
                                 accept=".pdf,application/pdf,image/*"
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                   const f = e.target.files?.[0] || null;
                                   if (!f) return;
                                   const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
@@ -1077,9 +1152,12 @@ export function ReviewCeishPage() {
                                     window.alert('Solo se permiten archivos en formato PDF o imagen.');
                                     return;
                                   }
-                                  const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                                  ceishFileCache[fileKey] = f;
-                                  handlePreguntaChange(p.id, { documentName: f.name, documentPath: fileKey });
+                                  try {
+                                    const { documentPath } = await ceishService.uploadFile(f);
+                                    handlePreguntaChange(p.id, { documentName: f.name, documentPath });
+                                  } catch (err) {
+                                    window.alert(err instanceof Error ? err.message : 'Error al subir el archivo.');
+                                  }
                                 }}
                                 style={{ fontSize: '12px' }}
                               />
@@ -1765,7 +1843,7 @@ export function ReviewCeishPage() {
                       </h4>
                       
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        {template.wordTemplateBase64 && !isEditingInvestigadorAnexos && (
+                        {template.wordTemplateObjectKey && !isEditingInvestigadorAnexos && (
                           <button
                             type="button"
                             className="eval-btn eval-btn--sm eval-btn--primary"
@@ -1818,25 +1896,29 @@ export function ReviewCeishPage() {
                             <button
                               type="button"
                               className="eval-btn eval-btn--primary"
-                              onClick={() => {
+                              onClick={async () => {
                                 const valores: ValorCampo[] = Object.keys(investigadorFormState).map(key => ({
                                   campoId: key,
                                   valor: investigadorFormState[key]
                                 }));
 
-                                guardarRespuestaAnexo({
-                                  anexoTemplateId: template.id,
-                                  documentoId: documento.id,
-                                  seccionId: firstSection?.id || 'sec-creacion',
-                                  versionArchivoId: latestVersion?.id || '',
-                                  emitidoPorId: resp ? resp.emitidoPorId : currentUser.id,
-                                  emitidoPorNombre: resp ? resp.emitidoPorNombre : currentUser.name,
-                                  valores,
-                                  comentariosAnotados: resp ? resp.comentariosAnotados : []
-                                });
+                                try {
+                                  await guardarRespuestaAnexo({
+                                    anexoTemplateId: template.id,
+                                    documentoId: documento.id,
+                                    seccionId: firstSection?.id || 'sec-creacion',
+                                    versionArchivoId: latestVersion?.id || '',
+                                    emitidoPorId: resp ? resp.emitidoPorId : currentUser.id,
+                                    emitidoPorNombre: resp ? resp.emitidoPorNombre : currentUser.name,
+                                    valores,
+                                    comentariosAnotados: resp ? resp.comentariosAnotados : []
+                                  });
 
-                                setIsEditingInvestigadorAnexos(false);
-                                window.alert('Cambios guardados con éxito.');
+                                  setIsEditingInvestigadorAnexos(false);
+                                  window.alert('Cambios guardados con éxito.');
+                                } catch (err) {
+                                  window.alert(err instanceof Error ? err.message : 'Error al guardar los cambios.');
+                                }
                               }}
                               style={{ fontSize: '12px', padding: '6px 12px' }}
                             >
@@ -1875,7 +1957,7 @@ export function ReviewCeishPage() {
                                   <input
                                     type="file"
                                     accept=".pdf,application/pdf,image/*"
-                                    onChange={(e) => {
+                                    onChange={async (e) => {
                                       const f = e.target.files?.[0] || null;
                                       if (!f) return;
                                       const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
@@ -1884,9 +1966,12 @@ export function ReviewCeishPage() {
                                         window.alert('Solo se permiten archivos en formato PDF o imagen.');
                                         return;
                                       }
-                                      const fileKey = `preg-archivo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-                                      ceishFileCache[fileKey] = f;
-                                      setInvestigadorFormState(prev => ({ ...prev, [p.id]: { documentName: f.name, documentPath: fileKey } }));
+                                      try {
+                                        const { documentPath } = await ceishService.uploadFile(f);
+                                        setInvestigadorFormState(prev => ({ ...prev, [p.id]: { documentName: f.name, documentPath } }));
+                                      } catch (err) {
+                                        window.alert(err instanceof Error ? err.message : 'Error al subir el archivo.');
+                                      }
                                     }}
                                     style={{ fontSize: '12px' }}
                                   />
@@ -1954,12 +2039,7 @@ export function ReviewCeishPage() {
                                       className="eval-btn eval-btn--outline"
                                       style={{ padding: '2px 8px', fontSize: '10.5px' }}
                                       onClick={() => {
-                                        const fileObj = ceishFileCache[currentVal.documentPath];
-                                        if (fileObj) {
-                                          window.open(URL.createObjectURL(fileObj), '_blank', 'noopener,noreferrer');
-                                        } else {
-                                          window.alert('Archivo no disponible en la sesión activa.');
-                                        }
+                                        window.open(ceishService.getFileRawUrl(currentVal.documentPath), '_blank', 'noopener,noreferrer');
                                       }}
                                     >
                                       Ver

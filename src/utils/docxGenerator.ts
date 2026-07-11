@@ -1,20 +1,9 @@
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 
-export function base64ToUint8Array(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-export function generateDocx(templateBase64: string, data: Record<string, any>, fileName: string) {
+export function generateDocx(templateBytes: Uint8Array, data: Record<string, any>, fileName: string) {
   try {
-    const content = base64ToUint8Array(templateBase64);
-    const zip = new PizZip(content);
+    const zip = new PizZip(templateBytes);
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,

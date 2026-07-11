@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { useCeishStore } from '../../../store/ceishStore';
+import { ceishService } from '../../../services/ceishService';
 import type { AnexoTemplate, Pregunta, CampoTipo } from '../../../shared/types/platform.types';
 
 export function AnexoTemplateCRUD() {
-  const { 
-    anexosTemplates, 
-    crearAnexoTemplate, 
-    editarAnexoTemplate, 
-    eliminarAnexoTemplate 
+  const {
+    anexosTemplates,
+    crearAnexoTemplate,
+    editarAnexoTemplate,
+    eliminarAnexoTemplate
   } = useCeishStore();
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Form State
   const [numero, setNumero] = useState<number>(1);
@@ -19,7 +22,7 @@ export function AnexoTemplateCRUD() {
   const [rol, setRol] = useState<'investigador' | 'evaluador'>('investigador');
   const [preguntas, setPreguntas] = useState<(Omit<Pregunta, 'id'> & { id?: string })[]>([]);
   const [wordTemplateName, setWordTemplateName] = useState<string>('');
-  const [wordTemplateBase64, setWordTemplateBase64] = useState<string>('');
+  const [wordTemplateObjectKey, setWordTemplateObjectKey] = useState<string>('');
 
   const handleStartCreate = () => {
     setNumero(anexosTemplates.length + 1);
@@ -27,7 +30,7 @@ export function AnexoTemplateCRUD() {
     setRol('investigador');
     setPreguntas([]);
     setWordTemplateName('');
-    setWordTemplateBase64('');
+    setWordTemplateObjectKey('');
     setEditingId(null);
     setIsEditing(true);
   };
@@ -38,7 +41,7 @@ export function AnexoTemplateCRUD() {
     setRol(template.rol);
     setPreguntas(template.preguntas.map(p => ({ ...p })));
     setWordTemplateName(template.wordTemplateName || '');
-    setWordTemplateBase64(template.wordTemplateBase64 || '');
+    setWordTemplateObjectKey(template.wordTemplateObjectKey || '');
     setEditingId(template.id);
     setIsEditing(true);
   };
@@ -85,25 +88,26 @@ export function AnexoTemplateCRUD() {
     setPreguntas(updated);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.name.toLowerCase().endsWith('.docx')) {
-        alert('Solo se permiten archivos de Word (.docx)');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        const base64 = result.split(',')[1]; // Remover el prefijo data:...base64,
-        setWordTemplateName(file.name);
-        setWordTemplateBase64(base64);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      alert('Solo se permiten archivos de Word (.docx)');
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const { documentPath } = await ceishService.uploadFile(file);
+      setWordTemplateName(file.name);
+      setWordTemplateObjectKey(documentPath);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al subir el archivo de Word.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim()) return alert('Por favor, ingresa el nombre de la plantilla.');
     if (preguntas.length === 0) return alert('Debes agregar al menos un campo/variable para rellenar en el documento.');
@@ -112,14 +116,20 @@ export function AnexoTemplateCRUD() {
     const vacia = preguntas.some(p => !p.texto.trim() || !p.key?.trim());
     if (vacia) return alert('Por favor, completa la etiqueta del campo y el tag de Word para todas las variables.');
 
-    if (editingId) {
-      editarAnexoTemplate(editingId, numero, nombre, rol, preguntas, wordTemplateName, wordTemplateBase64);
-    } else {
-      crearAnexoTemplate(numero, nombre, rol, preguntas, wordTemplateName, wordTemplateBase64);
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await editarAnexoTemplate(editingId, numero, nombre, rol, preguntas, wordTemplateName, wordTemplateObjectKey);
+      } else {
+        await crearAnexoTemplate(numero, nombre, rol, preguntas, wordTemplateName, wordTemplateObjectKey);
+      }
+      setIsEditing(false);
+      setEditingId(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al guardar la plantilla de anexo.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsEditing(false);
-    setEditingId(null);
   };
 
   return (
@@ -168,7 +178,9 @@ export function AnexoTemplateCRUD() {
                         className="eval-btn eval-btn--sm eval-btn--danger" 
                         onClick={() => {
                           if (confirm(`¿Estás seguro de que deseas eliminar el Anexo ${template.numero}? Se desvinculará de las secciones en uso.`)) {
-                            eliminarAnexoTemplate(template.id);
+                            eliminarAnexoTemplate(template.id).catch((err) => {
+                              alert(err instanceof Error ? err.message : 'Error al eliminar la plantilla de anexo.');
+                            });
                           }
                         }}
                       >
@@ -188,8 +200,8 @@ export function AnexoTemplateCRUD() {
               <button type="button" className="eval-btn eval-btn--outline" onClick={() => setIsEditing(false)}>
                 Cancelar
               </button>
-              <button type="submit" className="eval-btn eval-btn--primary">
-                Guardar
+              <button type="submit" className="eval-btn eval-btn--primary" disabled={isSaving || isUploading}>
+                {isSaving ? 'Guardando…' : 'Guardar'}
               </button>
             </div>
           </div>
@@ -234,14 +246,17 @@ export function AnexoTemplateCRUD() {
             <div className="form-group">
               <label className="form-label">Plantilla de Word Oficial (.docx)</label>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept=".docx"
                   onChange={handleFileChange}
+                  disabled={isUploading}
                   className="form-input"
                   style={{ fontSize: '12px' }}
                 />
-                {wordTemplateName && (
+                {isUploading ? (
+                  <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>Subiendo…</span>
+                ) : wordTemplateName && (
                   <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     ✓ Subido: {wordTemplateName}
                   </span>
