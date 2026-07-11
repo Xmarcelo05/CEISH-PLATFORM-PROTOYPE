@@ -11,6 +11,7 @@ import { ReviewCeishPage } from '../../features/evaluator/components/ReviewCeish
 import { AnexoTemplateCRUD } from '../../features/admin/components/AnexoTemplateCRUD';
 import { TipoDocumentoCRUD } from '../../features/admin/components/TipoDocumentoCRUD';
 import { NotificacionesAdminCRUD } from '../../features/admin/components/NotificacionesAdminCRUD';
+import { EvaluatorSeguimiento } from '../../features/evaluator/EvaluatorSeguimiento';
 
 function RootRedirect() {
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -37,6 +38,7 @@ export function AppRouter() {
         <Route element={<AppShell />}>
           <Route path="/estudiante" element={<SubmissionPage />} />
           <Route path="/evaluador" element={<EvaluatorDashboard />} />
+          <Route path="/evaluador/seguimiento" element={<EvaluatorSeguimiento />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/anexos" element={<AnexoTemplateCRUD />} />
           <Route path="/admin/tipos-documento" element={<TipoDocumentoCRUD />} />

@@ -138,3 +138,15 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
     * Se corrigieron las dependencias del hook `useEffect` en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) y [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) agregando `anexosTemplates` y `respuestasAnexos`. Ahora el formulario se actualiza inmediatamente cuando un administrador modifica los campos o textos en el CRUD del panel de control.
   * **Verificación:** TypeScript compila limpiamente (`npx tsc --noEmit`) sin advertencias ni fallos.
 
+### Sesión 6: Módulo de Seguimiento de Proyectos y Descarga de Actas para Evaluadores
+* **Fecha:** 2026-07-11
+* **Actividades:**
+  * **Nuevo Módulo de Seguimiento (`EvaluatorSeguimiento.tsx`)**:
+    * Creada la nueva vista interactiva [EvaluatorSeguimiento.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/EvaluatorSeguimiento.tsx) para que el evaluador consulte en un solo lugar todos los proyectos asignados a su cargo, detallando código, tema y riesgo.
+    * **Línea de Tiempo Dinámica**: Al seleccionar un proyecto, se abre un panel lateral/pestaña que dibuja la línea de tiempo del flujo del proyecto por etapas (verde = completada, naranja = etapa actual, gris = pendientes), incluyendo las fechas precisas de entrada y salida de cada sección y el estado de compleción de cada anexo (listo/pendiente).
+    * **Contador de Devoluciones**: Muestra en tiempo real el número de veces que el proyecto ha sido devuelto al investigador para correcciones.
+    * **Descarga de Anexos Rellenos en Word**: Incluido un apartado para descargar actas en Word `.docx` oficiales para los anexos completados. Para aquellos anexos no completados (pendientes), el botón se visualiza deshabilitado de forma estricta.
+  * **Navegación e Integración de Rutas**:
+    * Registrada la ruta `/evaluador/seguimiento` en [router/index.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/app/router/index.tsx).
+    * Añadido el ícono y enlace de navegación "Seguimiento" al menú lateral del evaluador en [AppShell.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/components/AppShell.tsx).
+  * **Verificación:** Ejecución limpia de `npx tsc --noEmit` confirmando compatibilidad del 100% en TypeScript.

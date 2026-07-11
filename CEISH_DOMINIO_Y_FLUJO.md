@@ -225,3 +225,17 @@ Esta es la parte más delicada del sistema, resumida en una tabla de decisión:
 11. **Investigar y corregir el bug de asignación automática** que no aparece en el panel del evaluador (reportado, causa aún no confirmada).
 
 Cada punto = una tarea independiente, con plan antes de código y commit propio, igual que en las fases anteriores.
+
+## 15. Módulo de Seguimiento de Proyectos y Descarga de Actas (Revisor)
+- **Dashboard de Asignaciones**: El evaluador cuenta con una vista consolidada de todos sus proyectos a cargo.
+- **Línea de Tiempo Visual**:
+  - Representa gráficamente cada sección/etapa configurada en el workflow.
+  - Colores distintivos: verde para completadas (excedidas o cerradas), naranja para la etapa activa actual del documento, y gris para las etapas pendientes.
+  - Despliega las fechas exactas de entrada (cuando el documento cambió a ese estado) y salida (cuando avanzó al siguiente estado).
+  - Enlista cada uno de los anexos del trámite con su estado actual (Listo / Pendiente) y su nivel de obligatoriedad.
+  - Muestra un contador numérico con el total de devoluciones para corrección del documento.
+- **Descargas en Formato de Plantilla Word (.docx)**:
+  - Generación en caliente utilizando la utilidad central `generateDocx` y `docxtemplater`.
+  - Los anexos que ya fueron completados y guardados/emitidos habilitan un botón dinámico para descargar el documento `.docx` relleno.
+  - Los anexos pendientes o no completados muestran el botón deshabilitado e inactivo, garantizando la consistencia documental.
+
