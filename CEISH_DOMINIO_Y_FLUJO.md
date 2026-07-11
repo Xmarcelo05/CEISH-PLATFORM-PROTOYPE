@@ -90,7 +90,7 @@ Tipo de Documento: "Investigación"
 - **TipoDocumento**: id, nombre (ej. "Investigación", "Tesis"), lista ordenada de `Seccion`.
 - **Seccion** (etapa): id, nombre, orden, lista de `AnexoAsignado` (referencia a un `AnexoTemplate` + flag `obligatorio`).
 - **AnexoTemplate**: id, número, nombre, rol (`investigador` | `evaluador`), wordTemplateName (nombre del archivo .docx), wordTemplateBase64 (contenido binario del Word en base64), lista de `Pregunta` (variables).
-- **Pregunta** (Variable): id, key (tag de Word {tag} a reemplazar), texto (etiqueta del formulario), tipo (`checklist` | `texto-libre` | `archivo`), descripción/contexto opcional, orden.
+- **Pregunta** (Variable): id, key (tag de Word {tag} a reemplazar), texto (etiqueta del formulario), tipo (`checklist` | `texto-libre` | `archivo` | `si-no`), descripción/contexto opcional, orden.
 - **Documento** (antes `Investigacion`, generalizado): id, código único, `tipoDocumentoId`, tema, descripción, autores (por cédula), investigadorId, miembrosCeishDeclarados, estado, versionesArchivo, historialEstados, cronómetro.
 - **Autor**: cédula (identificador principal), nombre (autocompletado si la cédula corresponde a un usuario registrado; si no, queda solo la cédula).
 - **RespuestaAnexo** (antes `EmisionAnexo`, generalizado): id, `anexoTemplateId`, `documentoId`, `seccionId`, versión de archivo asociada, quién la llenó, fecha, respuestas por pregunta, resultado/acción disparada si aplica, **snapshot congelado** de las preguntas tal como estaban al momento de guardar (para auditoría — ver sección 8).
@@ -103,43 +103,29 @@ Tipo de Documento: "Investigación"
 ```
 1. Investigador inicia la creación de un nuevo proyecto en el modal.
 2. Selecciona el Tipo de Documento (flujo configurado por el admin, e.g. "Investigación").
-3. Completa los metadatos generales (Tema, descripción, co-autores por cédula, y declaración de conflictos de interés con evaluadores).
+3. Completa los metadatos generales (Tema, descripción, co-autores por cédula).
    → El sistema autocompleta el nombre del co-autor si la cédula está registrada en el sistema.
    → Si la cédula corresponde a un evaluador, se marca conflicto automáticamente.
 4. El sistema despliega un wizard con pestañas horizontales para rellenar los anexos obligatorios de la Etapa 1 (Anexo 1 al Anexo 9). El investigador navega libremente respondiendo las preguntas.
 5. El investigador sube el archivo PDF del protocolo (máx. 15MB).
 6. Una vez completados todos los anexos obligatorios de Etapa 1 y subido el PDF, se habilita el botón "Registrar Proyecto y Solicitar Revisión".
-7. Al confirmar el registro:
-   → El sistema genera un código único (CEISH-2026-XXXX).
-   → Guarda de forma atómica todas las respuestas de los anexos del Investigador.
-   → Realiza la transición a Estratificación (Etapa 2, estado `estratificacion`).
-   → Sortea de forma aleatoria y ciega a un evaluador disponible que no presente conflictos de interés y le asigna el proyecto.
+7. El registro genera un código único, guarda las respuestas y realiza la transición a Estratificación (Etapa 2, estado `estratificacion`), asignando ciegamente a un evaluador sin conflictos.
 
 ── ETAPA 2: ESTRATIFICACIÓN ──────────────────────────────────
-6. Evaluador revisa los Anexos 1-9 ya llenados
-7. Evaluador llena Anexo 27 (Estratificación) — obligatorio
-8. Evaluador llena Anexo 11 (Exención) si aplica — obligatorio si sin riesgo
-9. [Opcional] Evaluador llena Anexo 23 (conflicto de interés) → se reasigna
-   automáticamente a otro evaluador, que continúa donde quedó
-10. En cualquier punto, el evaluador puede devolver el documento al
-    investigador (con comentario + opcionalmente cualquier anexo de esa
-    etapa como referencia de solo lectura, esté o no completado), o escalar
-    al admin (comentario + anexo adjunto). El proceso sigue corriendo en
-    paralelo mientras se resuelve el escalamiento; el evaluador puede seguir
-    llenando otros anexos de la misma etapa mientras tanto.
-11. Al completar los obligatorios de Etapa 2 → se habilita pasar a Etapa 3
+6. Evaluador revisa los Anexos 1-9 del Investigador.
+7. Evaluador llena Anexo 27 (Estratificación) — obligatorio. Al confirmar la Estratificación del proyecto (Exención Ética), el sistema guarda el Anexo 27 y redirige automáticamente a la pestaña del Anexo 11 (Carta de Exención) sin avanzar el proyecto de etapa.
+8. Evaluador llena Anexo 11 (Exención) — obligatorio. El botón para pasar el proyecto a la etapa de Revisión Técnica se activa únicamente si Anexo 27 está completo y si se llenan los campos obligatorios de tipo texto-libre (justificación técnica de exención). Los checklists y otros campos son opcionales.
+9. [Opcional] Evaluador llena Anexo 23 (Conflicto de Interés) — se activa solo si Anexo 27 está completo, Anexo 11 está válido y se describe la causa del conflicto en el formulario del Anexo 23. Al confirmar, el revisor queda desligado y el trámite avanza a Revisión Técnica (`revision-tecnica`) reasignando ciegamente a un nuevo evaluador en la sección técnica (`sec-evaluacion`).
+10. El evaluador puede devolver el documento al investigador en cualquier punto (con justificación obligatoria) o escalar al admin.
+11. Todos los botones de confirmación o de paso de etapa requieren una doble confirmación (`window.confirm`).
 
 ── ETAPA 3: EVALUACIÓN (ciclo de observaciones) ──────────────
-12. Evaluador llena Anexo 12 (Evaluación de Proyecto)
-    - Con observaciones → nueva RespuestaAnexo ligada a la versión de
-      archivo actual, el documento vuelve al investigador para corregir
-    - Sin observaciones → se llena Anexo 13 (Resoluciones/Aprobación) →
-      documento queda `aprobada`, inicia cronómetro
-13. [Opcional, a criterio del evaluador] Anexo 26 (Suspensión) en cualquier
-    momento de esta etapa → documento queda `anulada`
-14. Investigador sube nueva versión tras observaciones → nueva ronda,
-    vuelve al mismo evaluador, se crea una RespuestaAnexo nueva (nunca se
-    edita la anterior) → se repite hasta aprobación o anulación
+12. Evaluador llena Anexo 12 (Evaluación de Proyecto).
+    - Con observaciones → agrega comentarios por página del PDF (editables y eliminables en caliente) y devuelve el proyecto al investigador (con confirmación obligatoria), regresándolo a estado Borrador para correcciones.
+    - Sin observaciones → al confirmar la Aprobación Técnica del Anexo 12 (activable solo si las observaciones generales obligatorias están llenas), se emite el anexo 12 y se redirige automáticamente al Anexo 13 (Resolución de Aprobación Final).
+13. En el Anexo 13, el botón "Emitir Resolución y Aprobar Proyecto" se habilita únicamente si el Anexo 12 fue aprobado y se llenan los campos obligatorios del Anexo 13. Al confirmarlo (con doble confirmación), se finaliza el trámite y pasa a estado `aprobada`.
+14. [Opcional] Anexo 26 (Suspensión/Baja) en la pestaña del Anexo 26 → se activa con justificación técnica, y requiere una confirmación de advertencia especial: el documento pasa a estado `anulada`.
+15. El investigador sube correcciones tras devoluciones, iniciando una nueva ronda de revisión ligada al mismo evaluador.
 ```
 
 ## 6. Reglas transversales (actualizadas)

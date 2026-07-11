@@ -108,3 +108,33 @@ Construir un prototipo funcional interactivo basado en un **motor de workflows c
   * **Pantallas de Revisión y Alumno ([ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) y [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx)):** Añadidos botones dinámicos de "Descargar Acta Word" que inyectan datos de los formularios y variables globales (código, tema, fecha, evaluador) en las plantillas oficiales.
   * **Acciones Opcionales (Anexo 23 y 26):** Los botones de "Declarar Conflicto" y "Dar de Baja" ahora abren modales que renderizan los campos definidos para las plantillas de Word de conflicto (A23) y revocación (A26), permitiendo descargar las actas rellenas y confirmando las acciones de workflow.
   * **Verificación:** Ejecución limpia de `npx tsc -b` sin errores de compilación.
+
+### Sesión 5: Personalización de Anexos, Tipo "Sí o No", y Ajustes Críticos de Workflow
+* **Fecha:** 2026-07-11
+* **Actividades:**
+  * **Nuevo Tipo de Campo "Sí o No"**: Incorporado el tipo `'si-no'` a `CampoTipo` en [platform.types.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/shared/types/platform.types.ts). Diseñado un selector interactivo tipo Pill (botones Sí / No) de alta estética para las interfaces de llenado de alumnos y revisiones de evaluadores.
+  * **Traducción Sí/No y Reglas de Checklist en Word**: Modificada la exportación en [docxGenerator.ts](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/utils/docxGenerator.ts) para traducir el valor `'SI'` / `'NO'` a español `'SÍ'` / `'NO'` en la plantilla final. Los checklists opcionales ahora se traducen como `'SÍ'` si están marcados, o se dejan completamente en blanco (`''`) si no se marcan, tal como exige la regla de negocio.
+  * **Simplificación en CrearInvestigacionModal**: Eliminada la selección de conflicto de interés de miembros del CEISH de la vista de creación del alumno.
+  * **Refactorización de Estratificación y Exención (Etapa 2)**:
+    * Se removió la opción manual de reclasificación de riesgo ("Elevar Riesgo").
+    * Se removió el botón "Declarar Conflicto" del menú de acciones principales de la pestaña Anexo 27.
+    * Al confirmar la exención ética (Anexo 27), el proyecto se guarda localmente sin avanzar de etapa y redirige automáticamente al evaluador a la pestaña superior del **Anexo 11**.
+    * Se habilitó el panel de acciones específicas para el **Anexo 11**, con un botón para avanzar el trámite a la etapa de Revisión Técnica. Este botón se activa únicamente si Anexo 27 está completo y si los campos de tipo `texto-libre` (justificación técnica de exención) están completos. Los checklists en Anexo 11 son considerados opcionales.
+  * **Declaración de Conflicto de Interés Independiente (Anexo 23)**:
+    * Se trasladó la declaración de conflicto al **Anexo 23** en la parte superior. Al rellenar los datos de conflicto y confirmar, el revisor queda desligado y el sistema reasigna de manera ciega un nuevo evaluador para la siguiente etapa de revisión técnica (`sec-evaluacion`), avanzando el documento a `revision-tecnica`.
+    * El botón del Anexo 23 se habilita únicamente si el Anexo 27 está completo, Anexo 11 está válido y se describe la causa del conflicto en el cuadro de texto del Anexo 23.
+  * **Refactorización de Aprobación y Baja Técnica (Etapa 3)**:
+    * Se removió el botón "Dar de Baja la Investigación" del menú principal del Anexo 12, trasladándolo exclusivamente como una acción de la pestaña del **Anexo 26**.
+    * Al presionar "Confirmar Aprobación Técnica (Anexo 13)" en el Anexo 12, se emite el anexo 12 y se redirige de manera automática a la pestaña superior del **Anexo 13**.
+    * El botón de confirmación del Anexo 12 solo se habilita si se rellenan las observaciones generales obligatorias (campos `texto-libre` del Anexo 12).
+    * En el Anexo 13, se habilitó el botón final "Emitir Resolución y Aprobar Proyecto", activo únicamente si el Anexo 12 fue aprobado y se llenan los campos obligatorios del Anexo 13.
+  * **Seguridad y Doble Confirmación en Acciones Críticas**:
+    * Todos los botones que confirman un anexo o cambian la etapa del documento incorporaron una doble confirmación (`window.confirm`) para prevenir clics accidentales.
+    * En especial, al dar de baja el proyecto en el Anexo 26 se solicita confirmación adicional: *"¿Está seguro de que desea DAR DE BAJA esta investigación definitivamente? Esta acción es irreversible y archivará el expediente."*
+  * **Anotaciones Editables y Eliminables + Modal de Rondas**:
+    * El listado de observaciones del Anexo 12 ahora permite la edición en caliente (in-place textareas) y la eliminación directa de cada comentario por página.
+    * El historial de evaluaciones de rondas anteriores fue removido de la barra lateral y ubicado dentro de una ventana modal de solo lectura accesible mediante un botón dedicado.
+  * **Arreglo de Reactividad del Store**:
+    * Se corrigieron las dependencias del hook `useEffect` en [ReviewCeishPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/evaluator/components/ReviewCeishPage.tsx) y [SubmissionPage.tsx](file:///C:/Users/PC/Desktop/CHEISH%20Prototype/CEISH-PLATFORM-PROTOYPE/src/features/student/SubmissionPage.tsx) agregando `anexosTemplates` y `respuestasAnexos`. Ahora el formulario se actualiza inmediatamente cuando un administrador modifica los campos o textos en el CRUD del panel de control.
+  * **Verificación:** TypeScript compila limpiamente (`npx tsc --noEmit`) sin advertencias ni fallos.
+
