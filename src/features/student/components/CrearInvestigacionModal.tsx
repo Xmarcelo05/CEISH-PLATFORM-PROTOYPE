@@ -77,11 +77,6 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
     }
   };
 
-  const handleConflictToggle = (id: string) => {
-    setConflictos(prev =>
-      prev.includes(id) ? prev.filter(cId => cId !== id) : [...prev, id]
-    );
-  };
 
   // Manejar llenado de respuestas locales en el wizard
   const handlePreguntaChange = (anexoId: string, preguntaId: string, valor: any) => {
@@ -222,7 +217,6 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
     onCancel();
   };
 
-  const evaluadoresCeish = USUARIOS_REGISTRADOS.filter(u => u.role === 'evaluator');
 
   return (
     <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
@@ -335,22 +329,6 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                   </div>
                 </div>
 
-                {/* Conflictos de Interés */}
-                <div className="modal__field">
-                  <label className="modal__label">Declaración de Conflictos de Interés</label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', background: '#f8fafc', padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0', marginTop: '4px' }}>
-                    {evaluadoresCeish.map((ev) => (
-                      <label key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '12px' }}>
-                        <input
-                          type="checkbox"
-                          checked={conflictos.includes(ev.id)}
-                          onChange={() => handleConflictToggle(ev.id)}
-                        />
-                        <span>{ev.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
 
                 {/* PDF Upload */}
                 <div className="modal__field">
@@ -485,6 +463,43 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                                         </span>
                                       )}
                                     </div>
+                                  ) : p.tipo === 'si-no' ? (
+                                     <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                                       <button
+                                         type="button"
+                                         onClick={() => handlePreguntaChange(template.id, p.id, 'SI')}
+                                         style={{
+                                           padding: '6px 16px',
+                                           borderRadius: '20px',
+                                           border: '1px solid #cbd5e1',
+                                           backgroundColor: currentVal === 'SI' ? '#10b981' : '#f8fafc',
+                                           color: currentVal === 'SI' ? 'white' : '#475569',
+                                           fontWeight: 600,
+                                           fontSize: '12px',
+                                           cursor: 'pointer',
+                                           transition: 'all 0.2s',
+                                         }}
+                                       >
+                                         Sí
+                                       </button>
+                                       <button
+                                         type="button"
+                                         onClick={() => handlePreguntaChange(template.id, p.id, 'NO')}
+                                         style={{
+                                           padding: '6px 16px',
+                                           borderRadius: '20px',
+                                           border: '1px solid #cbd5e1',
+                                           backgroundColor: currentVal === 'NO' ? '#ef4444' : '#f8fafc',
+                                           color: currentVal === 'NO' ? 'white' : '#475569',
+                                           fontWeight: 600,
+                                           fontSize: '12px',
+                                           cursor: 'pointer',
+                                           transition: 'all 0.2s',
+                                         }}
+                                       >
+                                         No
+                                       </button>
+                                     </div>
                                   ) : (
                                     <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                                       <input

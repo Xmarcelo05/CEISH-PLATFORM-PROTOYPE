@@ -46,20 +46,27 @@ export function SubmissionPage() {
       );
 
       const iniciales: Record<string, any> = {};
+      const template = anexosTemplates.find(t => t.id === activeAnexoId);
+
       if (respGuardada) {
         respGuardada.valores.forEach(v => {
           iniciales[v.campoId] = v.valor;
         });
+        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
+        template?.preguntas.forEach(p => {
+          if (iniciales[p.id] === undefined) {
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          }
+        });
       } else {
         // Inicializar campos vacíos según la plantilla
-        const template = anexosTemplates.find(t => t.id === activeAnexoId);
         template?.preguntas.forEach(p => {
           iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
         });
       }
       setRespuestasForm(iniciales);
     }
-  }, [activeAnexoId, selectedDocId, latestVersion?.id]);
+  }, [activeAnexoId, selectedDocId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
 
   const handleDownloadWordTemplate = (anexoId: string) => {
     const template = anexosTemplates.find(t => t.id === anexoId);
@@ -83,7 +90,9 @@ export function SubmissionPage() {
       const tag = p.key || `tag_${p.orden}`;
       
       if (p.tipo === 'checklist') {
-        dataToInject[tag] = val ? 'CUMPLE / CONFORME' : 'NO CUMPLE / NO CONFORME';
+        dataToInject[tag] = val ? 'SÍ' : '';
+      } else if (p.tipo === 'si-no') {
+        dataToInject[tag] = (val === 'SI' || val === true || val === 'true') ? 'SÍ' : (val === 'NO' || val === false || val === 'false') ? 'NO' : '';
       } else if (p.tipo === 'archivo') {
         dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
       } else {
@@ -625,6 +634,43 @@ export function SubmissionPage() {
                                     ✓ Archivo adjunto: {respuestasForm[p.id].documentName}
                                   </span>
                                 )}
+                              </div>
+                            ) : p.tipo === 'si-no' ? (
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setRespuestasForm({ ...respuestasForm, [p.id]: 'SI' })}
+                                  style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '20px',
+                                    border: '1px solid #cbd5e1',
+                                    backgroundColor: respuestasForm[p.id] === 'SI' ? '#10b981' : '#f8fafc',
+                                    color: respuestasForm[p.id] === 'SI' ? 'white' : '#475569',
+                                    fontWeight: 600,
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                  }}
+                                >
+                                  Sí
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRespuestasForm({ ...respuestasForm, [p.id]: 'NO' })}
+                                  style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '20px',
+                                    border: '1px solid #cbd5e1',
+                                    backgroundColor: respuestasForm[p.id] === 'NO' ? '#ef4444' : '#f8fafc',
+                                    color: respuestasForm[p.id] === 'NO' ? 'white' : '#475569',
+                                    fontWeight: 600,
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                  }}
+                                >
+                                  No
+                                </button>
                               </div>
                             ) : (
                               <label className="checkbox-label" style={{ marginTop: '2px' }}>

@@ -69,6 +69,11 @@ export function ReviewCeishPage() {
   const [isEditingInvestigadorAnexos, setIsEditingInvestigadorAnexos] = useState(false);
   const [investigadorFormState, setInvestigadorFormState] = useState<Record<string, any>>({});
 
+  // Edición de anotaciones individuales e historial de rondas
+  const [editingAnotacionId, setEditingAnotacionId] = useState<string | null>(null);
+  const [editingAnotacionTexto, setEditingAnotacionTexto] = useState('');
+  const [showHistorialRondasModal, setShowHistorialRondasModal] = useState(false);
+
   // Visor PDF
   const pdf = usePDFViewer();
   const { loadFile } = pdf;
@@ -127,12 +132,19 @@ export function ReviewCeishPage() {
       );
 
       const iniciales: Record<string, any> = {};
+      const template = anexosTemplates.find(t => t.id === selectedInvestigadorAnexoId);
+
       if (respGuardada) {
         respGuardada.valores.forEach(v => {
           iniciales[v.campoId] = v.valor;
         });
+        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
+        template?.preguntas.forEach(p => {
+          if (iniciales[p.id] === undefined) {
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          }
+        });
       } else {
-        const template = anexosTemplates.find(t => t.id === selectedInvestigadorAnexoId);
         template?.preguntas.forEach(p => {
           iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
         });
@@ -154,19 +166,26 @@ export function ReviewCeishPage() {
       );
 
       const iniciales: Record<string, any> = {};
+      const template = anexosTemplates.find(t => t.id === activeAnexoId);
+
       if (respGuardada) {
         respGuardada.valores.forEach(v => {
           iniciales[v.campoId] = v.valor;
         });
+        // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
+        template?.preguntas.forEach(p => {
+          if (iniciales[p.id] === undefined) {
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          }
+        });
       } else {
-        const template = anexosTemplates.find(t => t.id === activeAnexoId);
         template?.preguntas.forEach(p => {
           iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
         });
       }
       setRespuestasForm(iniciales);
     }
-  }, [activeAnexoId, latestVersion?.id]);
+  }, [activeAnexoId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
 
   // Cargar observaciones o respuestas a nivel de página del PDF para este anexo si ya fueron guardadas
   useEffect(() => {
@@ -206,6 +225,23 @@ export function ReviewCeishPage() {
     setAnotaciones(prev => prev.filter(a => a.id !== id));
   };
 
+  const handleStartEditAnotacion = (id: string, texto: string) => {
+    setEditingAnotacionId(id);
+    setEditingAnotacionTexto(texto);
+  };
+
+  const handleGuardarEditAnotacion = (id: string) => {
+    if (!editingAnotacionTexto.trim()) return;
+    setAnotaciones(prev => prev.map(a => a.id === id ? { ...a, texto: editingAnotacionTexto.trim() } : a));
+    setEditingAnotacionId(null);
+    setEditingAnotacionTexto('');
+  };
+
+  const handleCancelarEditAnotacion = () => {
+    setEditingAnotacionId(null);
+    setEditingAnotacionTexto('');
+  };
+
   // Guardar Borrador
   const handleGuardarBorrador = () => {
     if (!activeAnexoId || !latestVersion) return;
@@ -240,13 +276,17 @@ export function ReviewCeishPage() {
       return alert('Debe completar la justificación/criterio final del anexo de estratificación.');
     }
 
+    if (!window.confirm('¿Está seguro de que desea confirmar la Estratificación del proyecto y avanzar a la pestaña del Anexo 11?')) {
+      return;
+    }
+
     const versionId = latestVersion?.id || '';
     const valoresA27: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
       campoId: key,
       valor: respuestasForm[key]
     }));
 
-    // 1. Emitir Anexo 27
+    // 1. Emitir Anexo 27 (manteniendo en la etapa actual de estratificacion)
     emitirAnexo(
       {
         anexoTemplateId: 'anexo-27',
@@ -259,34 +299,13 @@ export function ReviewCeishPage() {
         comentariosAnotados: []
       },
       'coincide',
-      'revision-tecnica',
+      'estratificacion',
       'Estratificación de riesgo completada: Confirmado sin riesgo.',
       'sin-riesgo'
     );
 
-    // 2. Emitir Anexo 11 (Exención Ética)
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-11',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: [
-          { campoId: 'a11_c1', valor: `Exención ética autorizada tras análisis de estratificación. Criterio: ${justificacionText}` },
-          { campoId: 'a11_c2', valor: true }
-        ],
-        comentariosAnotados: []
-      },
-      'aprobado',
-      'revision-tecnica',
-      'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 2).',
-      'sin-riesgo'
-    );
-
-    window.alert('Se ha confirmado la exención de revisión ética (Anexo 11). Trámite pasa a Revisión Técnica.');
-    navigate('/evaluador');
+    window.alert('Estratificación registrada. Proceda a llenar el Formato de Carta de Exención (Anexo 11) para finalizar esta etapa.');
+    setActiveAnexoId('anexo-11');
   };
 
   // ACCIÓN 2: Elevar Riesgo (Fuera de Alcance del Prototipo)
@@ -348,7 +367,9 @@ export function ReviewCeishPage() {
       const val = respuestasForm[p.id];
       const tag = p.key || `tag_${p.orden}`;
       if (p.tipo === 'checklist') {
-        dataToInject[tag] = val ? 'CUMPLE / CONFORME' : 'NO CUMPLE / NO CONFORME';
+        dataToInject[tag] = val ? 'SÍ' : '';
+      } else if (p.tipo === 'si-no') {
+        dataToInject[tag] = (val === 'SI' || val === true || val === 'true') ? 'SÍ' : (val === 'NO' || val === false || val === 'false') ? 'NO' : '';
       } else if (p.tipo === 'archivo') {
         dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
       } else {
@@ -434,7 +455,9 @@ export function ReviewCeishPage() {
       const tag = p.key || `tag_${p.orden}`;
       
       if (p.tipo === 'checklist') {
-        dataToInject[tag] = val ? 'CUMPLE / CONFORME' : 'NO CUMPLE / NO CONFORME';
+        dataToInject[tag] = val ? 'SÍ' : '';
+      } else if (p.tipo === 'si-no') {
+        dataToInject[tag] = (val === 'SI' || val === true || val === 'true') ? 'SÍ' : (val === 'NO' || val === false || val === 'false') ? 'NO' : '';
       } else if (p.tipo === 'archivo') {
         dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
       } else {
@@ -484,6 +507,104 @@ export function ReviewCeishPage() {
 
     darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, conflictoComentario.trim());
     window.alert('Se ha registrado su conflicto de interés (Anexo 23). La plataforma lo ha retirado de este proyecto y asignado otro revisor.');
+    navigate('/evaluador');
+  };
+
+  // ACCIÓN 3.5: Inhibición Directa desde Pestaña Anexo 23
+  const isAnexo23Valido = () => {
+    // 1. Debe cumplirse la condición del Anexo 11 (que requiere el Anexo 27 completo y el texto del Anexo 11 lleno)
+    if (!isAnexo11Valido()) return false;
+
+    // 2. Debe detallarse la causa del conflicto (campos 'texto-libre' de Anexo 23)
+    const template23 = anexosTemplates.find(t => t.id === 'anexo-23');
+    if (!template23) return false;
+
+    const tieneTextoLibreVacio = template23.preguntas.some(p => {
+      if (p.tipo === 'texto-libre') {
+        const val = respuestasForm[p.id];
+        return !val || !val.trim();
+      }
+      return false;
+    });
+
+    return !tieneTextoLibreVacio;
+  };
+
+  const handleDeclararConflictoDirect = () => {
+    if (!isAnexo23Valido()) return;
+    
+    if (!window.confirm('¿Está seguro de que desea declarar su conflicto de interés formalmente (Anexo 23)? Esto lo desvinculará del trámite.')) {
+      return;
+    }
+
+    const template = anexosTemplates.find(t => t.id === 'anexo-23');
+    if (!template) return;
+    
+    const qTexto = template.preguntas.find(p => p.tipo === 'texto-libre' || p.key === 'observaciones');
+    const textoVal = qTexto ? respuestasForm[qTexto.id] : '';
+    
+    darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, textoVal.trim());
+    window.alert('Se ha registrado su conflicto de interés (Anexo 23). El proyecto pasará a la siguiente etapa (Revisión Técnica) con un nuevo revisor asignado.');
+    navigate('/evaluador');
+  };
+
+  // ACCIÓN 1.5: Finalizar Exención Ética (Anexo 11)
+  const isAnexo11Valido = () => {
+    // 1. Debe completarse el llenado/emisión del anexo 27 (estratificación)
+    const anexo27Completado = respuestasAnexos.some(
+      r => r.documentoId === documento.id && r.anexoTemplateId === 'anexo-27' && r.versionArchivoId === latestVersion?.id
+    );
+    if (!anexo27Completado) return false;
+
+    // 2. Deben llenarse los campos obligatorios (únicamente 'texto-libre') de la plantilla actual de Anexo 11
+    const template11 = anexosTemplates.find(t => t.id === 'anexo-11');
+    if (!template11) return false;
+
+    const tieneTextoLibreVacio = template11.preguntas.some(p => {
+      if (p.tipo === 'texto-libre') {
+        const val = respuestasForm[p.id];
+        return !val || !val.trim();
+      }
+      return false;
+    });
+
+    return !tieneTextoLibreVacio;
+  };
+
+  const handleCompletarExencionEtapa = () => {
+    if (!isAnexo11Valido()) return;
+    
+    if (!window.confirm('¿Está seguro de que desea emitir la Carta de Exención Ética (Anexo 11) y avanzar el proyecto a la etapa de Revisión Técnica?')) {
+      return;
+    }
+
+    const template = anexosTemplates.find(t => t.id === 'anexo-11');
+    if (!template) return;
+    
+    const versionId = latestVersion?.id || '';
+    const valores = template.preguntas.map(p => ({
+      campoId: p.id,
+      valor: respuestasForm[p.id]
+    }));
+    
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-11',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores: valores,
+        comentariosAnotados: []
+      },
+      'aprobado',
+      'revision-tecnica',
+      'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 2).',
+      'sin-riesgo'
+    );
+    
+    window.alert('Se ha emitido la exención de revisión ética (Anexo 11). Trámite pasa a Revisión Técnica.');
     navigate('/evaluador');
   };
 
@@ -548,15 +669,37 @@ export function ReviewCeishPage() {
   // DISPARADORES DE ACCIÓN (Mapeados por Anexo ID en Evaluación Técnica)
   // ============================================================================
 
-  // ACCIÓN A: Aprobar Proyecto (Emisión de Anexo 12 y Anexo 13)
-  const handleAprobarProyecto = () => {
+  // ACCIÓN A: Aprobar Metodológicamente (Emisión de Anexo 12, redirige a Anexo 13)
+  const isAnexo12Valido = () => {
+    const template12 = anexosTemplates.find(t => t.id === 'anexo-12');
+    if (!template12) return false;
+
+    // Buscar si alguna pregunta de tipo 'texto-libre' está vacía
+    const tieneTextoLibreVacio = template12.preguntas.some(p => {
+      if (p.tipo === 'texto-libre') {
+        const val = respuestasForm[p.id];
+        return !val || !val.trim();
+      }
+      return false;
+    });
+
+    return !tieneTextoLibreVacio;
+  };
+
+  const handleAprobarMetodologico = () => {
+    if (!isAnexo12Valido()) return;
+
+    if (!window.confirm('¿Está seguro de que desea aprobar técnicamente el Anexo 12 y avanzar a la Resolución Final (Anexo 13)?')) {
+      return;
+    }
+
     const versionId = latestVersion?.id || '';
     const valoresA12 = Object.keys(respuestasForm).map(key => ({
       campoId: key,
       valor: respuestasForm[key]
     }));
 
-    // 1. Emitir Anexo 12
+    // Emitir Anexo 12 con resultado aprobado, pero mantener en revisión técnica
     emitirAnexo(
       {
         anexoTemplateId: 'anexo-12',
@@ -569,11 +712,54 @@ export function ReviewCeishPage() {
         comentariosAnotados: []
       },
       'aprobado',
-      'aprobada',
-      'Evaluación técnica aprobada.'
+      'revision-tecnica',
+      'Evaluación técnica del Anexo 12 aprobada. Continuando a la emisión de la Resolución (Anexo 13).'
     );
 
-    // 2. Emitir Anexo 13 (Resolución de Aprobación Final)
+    window.alert('Evaluación técnica del Anexo 12 aprobada con éxito. Proceda a llenar la Resolución (Anexo 13).');
+    setActiveAnexoId('anexo-13');
+  };
+
+  // Validaciones y triggers para Anexo 13 y Anexo 26
+  const isAnexo13Valido = () => {
+    // 1. Debe completarse el Anexo 12 (evaluación técnica aprobada)
+    const anexo12Completado = respuestasAnexos.some(
+      r => r.documentoId === documento.id && r.anexoTemplateId === 'anexo-12' && r.resultado === 'aprobado' && r.versionArchivoId === latestVersion?.id
+    );
+    if (!anexo12Completado) return false;
+
+    // 2. Deben llenarse los campos obligatorios (únicamente 'texto-libre') del Anexo 13
+    const template13 = anexosTemplates.find(t => t.id === 'anexo-13');
+    if (!template13) return false;
+
+    const tieneTextoLibreVacio = template13.preguntas.some(p => {
+      if (p.tipo === 'texto-libre') {
+        const val = respuestasForm[p.id];
+        return !val || !val.trim();
+      }
+      return false;
+    });
+
+    return !tieneTextoLibreVacio;
+  };
+
+  const handleCompletarAprobacionFinal = () => {
+    if (!isAnexo13Valido()) return;
+
+    if (!window.confirm('¿Está seguro de que desea emitir la Resolución de Aprobación Final (Anexo 13) y finalizar el trámite del proyecto?')) {
+      return;
+    }
+
+    const template = anexosTemplates.find(t => t.id === 'anexo-13');
+    if (!template) return;
+
+    const versionId = latestVersion?.id || '';
+    const valores = template.preguntas.map(p => ({
+      campoId: p.id,
+      valor: respuestasForm[p.id]
+    }));
+
+    // Emitir Anexo 13 y cambiar estado final a 'aprobada'
     emitirAnexo(
       {
         anexoTemplateId: 'anexo-13',
@@ -582,10 +768,7 @@ export function ReviewCeishPage() {
         versionArchivoId: versionId,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
-        valores: [
-          { campoId: 'a13_c1', valor: true },
-          { campoId: 'a13_c2', valor: 'Aprobación definitiva ética y metodológica emitida sin observaciones.' }
-        ],
+        valores,
         comentariosAnotados: []
       },
       'aprobado',
@@ -593,13 +776,69 @@ export function ReviewCeishPage() {
       'Emisión oficial de la Resolución de Aprobación del CEISH.'
     );
 
-    window.alert('Proyecto aprobado ética y metodológicamente (Anexo 13). Trámite finalizado con éxito.');
+    window.alert('Resolución de Aprobación emitida con éxito (Anexo 13). Trámite finalizado.');
+    navigate('/evaluador');
+  };
+
+  const isAnexo26Valido = () => {
+    const template26 = anexosTemplates.find(t => t.id === 'anexo-26');
+    if (!template26) return false;
+
+    const tieneTextoLibreVacio = template26.preguntas.some(p => {
+      if (p.tipo === 'texto-libre') {
+        const val = respuestasForm[p.id];
+        return !val || !val.trim();
+      }
+      return false;
+    });
+
+    return !tieneTextoLibreVacio;
+  };
+
+  const handleCompletarBajaFinal = () => {
+    if (!isAnexo26Valido()) return;
+
+    if (!window.confirm('¿Está seguro de que desea DAR DE BAJA esta investigación definitivamente? Esta acción es irreversible y archivará el expediente.')) {
+      return;
+    }
+
+    const template = anexosTemplates.find(t => t.id === 'anexo-26');
+    if (!template) return;
+
+    const versionId = latestVersion?.id || '';
+    const valores = template.preguntas.map(p => ({
+      campoId: p.id,
+      valor: respuestasForm[p.id]
+    }));
+
+    // Emitir Anexo 26 y cambiar estado final a 'anulada'
+    emitirAnexo(
+      {
+        anexoTemplateId: 'anexo-26',
+        documentoId: documento.id,
+        seccionId: activeSeccion.id,
+        versionArchivoId: versionId,
+        emitidoPorId: currentUser.id,
+        emitidoPorNombre: currentUser.name,
+        valores,
+        comentariosAnotados: []
+      },
+      'baja',
+      'anulada',
+      'Proyecto dado de baja o suspendido oficialmente.'
+    );
+
+    window.alert('Expediente anulado / suspendido definitivamente (Anexo 26).');
     navigate('/evaluador');
   };
 
   // ACCIÓN B: No Aprobar (Devolver con observaciones, mantiene revisión técnica)
   const handleNoAprobarDevolver = () => {
     if (anotaciones.length === 0) return;
+
+    if (!window.confirm('¿Está seguro de que desea no aprobar el proyecto y devolverlo al investigador con observaciones?')) {
+      return;
+    }
 
     const versionId = latestVersion?.id || '';
     const valoresA12 = Object.keys(respuestasForm).map(key => ({
@@ -850,6 +1089,43 @@ export function ReviewCeishPage() {
                                 </span>
                               )}
                             </div>
+                          ) : p.tipo === 'si-no' ? (
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handlePreguntaChange(p.id, 'SI')}
+                                style={{
+                                  padding: '6px 16px',
+                                  borderRadius: '20px',
+                                  border: '1px solid #cbd5e1',
+                                  backgroundColor: respuestasForm[p.id] === 'SI' ? '#10b981' : '#f8fafc',
+                                  color: respuestasForm[p.id] === 'SI' ? 'white' : '#475569',
+                                  fontWeight: 600,
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                }}
+                              >
+                                Sí
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePreguntaChange(p.id, 'NO')}
+                                style={{
+                                  padding: '6px 16px',
+                                  borderRadius: '20px',
+                                  border: '1px solid #cbd5e1',
+                                  backgroundColor: respuestasForm[p.id] === 'NO' ? '#ef4444' : '#f8fafc',
+                                  color: respuestasForm[p.id] === 'NO' ? 'white' : '#475569',
+                                  fontWeight: 600,
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                }}
+                              >
+                                No
+                              </button>
+                            </div>
                           ) : (
                             <label className="checkbox-label" style={{ marginTop: '6px' }}>
                               <input
@@ -891,24 +1167,70 @@ export function ReviewCeishPage() {
                         </div>
 
                         {/* Listado de Anotaciones en la Ronda */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '120px', overflowY: 'auto' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
                           {anotaciones.length === 0 ? (
                             <p style={{ fontSize: '11px', color: '#64748b', margin: 0, fontStyle: 'italic' }}>
                               Ninguna anotación específica registrada.
                             </p>
                           ) : (
                             anotaciones.map((anot) => (
-                              <div key={anot.id} style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '6px 10px', borderRadius: '6px', fontSize: '11.5px' }}>
-                                <span style={{ flex: 1, color: '#334155' }}>
-                                  <strong>Pág. {anot.paginaPdf}:</strong> "{anot.texto}"
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleEliminarAnotacion(anot.id)}
-                                  style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0 4px', fontSize: '13px' }}
-                                >
-                                  ✕
-                                </button>
+                              <div key={anot.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '8px 10px', borderRadius: '6px', fontSize: '11.5px' }}>
+                                {editingAnotacionId === anot.id ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <textarea
+                                      className="form-input"
+                                      rows={2}
+                                      value={editingAnotacionTexto}
+                                      onChange={(e) => setEditingAnotacionTexto(e.target.value)}
+                                      style={{ fontSize: '11px', padding: '4px', width: '100%' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                      <button
+                                        type="button"
+                                        className="eval-btn eval-btn--sm eval-btn--outline"
+                                        onClick={handleCancelarEditAnotacion}
+                                        style={{ fontSize: '10.5px', padding: '2px 8px' }}
+                                      >
+                                        Cancelar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="eval-btn eval-btn--sm eval-btn--primary"
+                                        onClick={() => handleGuardarEditAnotacion(anot.id)}
+                                        style={{ fontSize: '10.5px', padding: '2px 8px' }}
+                                      >
+                                        Guardar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                                    <span style={{ flex: 1, color: '#334155', lineHeight: '1.4' }}>
+                                      <strong>Pág. {anot.paginaPdf}:</strong> "{anot.texto}"
+                                    </span>
+                                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEditAnotacion(anot.id, anot.texto)}
+                                        title="Editar anotación"
+                                        style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                                      >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                          <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleEliminarAnotacion(anot.id)}
+                                        title="Eliminar anotación"
+                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', fontSize: '12px', fontWeight: 'bold' }}
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             ))
                           )}
@@ -928,29 +1250,19 @@ export function ReviewCeishPage() {
 
                     {/* HISTORIAL DE RONDAS DE EVALUACIÓN ANTERIORES (Para Anexo 12) */}
                     {activeAnexoId === 'anexo-12' && rondasPreviasA12.length > 0 && (
-                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', marginTop: '10px' }}>
-                        <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 700, color: '#334155' }}>
-                          Historial de Evaluaciones de Rondas Anteriores
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {rondasPreviasA12.map((ron, rIdx) => (
-                            <div key={ron.id} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '10px', borderRadius: '8px' }}>
-                              <p style={{ margin: 0, fontSize: '11px', fontWeight: 700, color: '#475569' }}>
-                                Ronda #{rIdx + 1} (Archivo Evaluado: {documento.versionesArchivo.find(v => v.id === ron.versionArchivoId)?.documentName || 'Desconocido'})
-                              </p>
-                              <p style={{ margin: '2px 0 6px 0', fontSize: '10px', color: '#64748b' }}>
-                                Evaluado el: {new Date(ron.emitidoAt).toLocaleString()} por {ron.emitidoPorNombre}
-                              </p>
-                              <ul style={{ margin: 0, paddingLeft: '14px', fontSize: '11px', color: '#475569' }}>
-                                {ron.comentariosAnotados.map(c => (
-                                  <li key={c.id}>
-                                    <strong>Pág. {c.paginaPdf}:</strong> "{c.texto}"
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ))}
-                        </div>
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '12px', marginTop: '12px' }}>
+                        <button
+                          type="button"
+                          className="eval-btn eval-btn--outline"
+                          onClick={() => setShowHistorialRondasModal(true)}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', borderColor: '#2563eb', color: '#2563eb' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                          </svg>
+                          Ver Historial de Rondas Anteriores ({rondasPreviasA12.length})
+                        </button>
                       </div>
                     )}
 
@@ -968,37 +1280,76 @@ export function ReviewCeishPage() {
                           <button type="button" className="eval-btn eval-btn--primary" onClick={handleConfirmarExencion} style={{ width: '100%' }}>
                             Confirmar Exención Ética (Anexo 11)
                           </button>
-                          <span style={{ fontSize: '10.5px', color: '#1e40af' }}>✓ Confirma que el proyecto carece de riesgos éticos y lo transiciona a la Etapa 2 de revisión metodológica.</span>
+                          <span style={{ fontSize: '10.5px', color: '#1e40af' }}>✓ Confirma la estratificación del proyecto y avanza a la pestaña del Anexo 11 para emitir la exención.</span>
                         </div>
 
-                        {/* Opción 2: Reclasificar Riesgo (Desviación) */}
-                        <div style={{ borderTop: '1px solid #bfdbfe', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <div style={{ display: 'flex', justifyItems: 'center', gap: '8px' }}>
-                            <select 
-                              className="form-input" 
-                              value={nuevoRiesgoEleccion} 
-                              onChange={(e) => setNuevoRiesgoEleccion(e.target.value as RiesgoTipo)}
-                              style={{ fontSize: '12px', flex: 1, padding: '4px' }}
-                            >
-                              <option value="riesgo-minimo">Riesgo Mínimo</option>
-                              <option value="riesgo-mayor">Riesgo Mayor</option>
-                            </select>
-                            <button type="button" className="eval-btn eval-btn--outline" onClick={handleElevarRiesgo} style={{ fontSize: '11px' }}>
-                              Elevar Riesgo
-                            </button>
-                          </div>
-                          <span style={{ fontSize: '10.5px', color: '#6b7280' }}>⚠️ Cambia la estratificación; al ser riesgo mínimo/mayor, el trámite quedará fuera de alcance para este prototipo.</span>
-                        </div>
-
-                        {/* Opción 3: Devolución y Conflicto */}
+                        {/* Opción 2: Devolución */}
                         <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #bfdbfe', paddingTop: '10px' }}>
-                          <button type="button" className="eval-btn eval-btn--sm eval-btn--outline" onClick={() => setShowDevolverModal(true)} style={{ flex: 1 }}>
+                          <button 
+                            type="button" 
+                            className="eval-btn eval-btn--outline" 
+                            onClick={() => setShowDevolverModal(true)} 
+                            style={{ width: '100%', borderColor: '#d97706', color: '#d97706' }}
+                          >
                             Devolver para Correcciones
                           </button>
-                          <button type="button" className="eval-btn eval-btn--sm eval-btn--danger" onClick={() => setShowConflictoModal(true)} style={{ flex: 1 }}>
-                            Declarar Conflicto (Anexo 23)
-                          </button>
                         </div>
+                      </div>
+                    )}
+
+                    {/* ACCIONES DE EXENCIÓN ÉTICA (Anexo 11) */}
+                    {documento.estado === 'estratificacion' && activeAnexoId === 'anexo-11' && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f0fdf4', padding: '14px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#166534' }}>Aprobación de Exención Ética (Anexo 11)</h4>
+                        
+                        <button 
+                          type="button" 
+                          className="eval-btn" 
+                          onClick={handleCompletarExencionEtapa} 
+                          disabled={!isAnexo11Valido()}
+                          style={{ 
+                            width: '100%', 
+                            backgroundColor: isAnexo11Valido() ? '#16a34a' : '#cbd5e1', 
+                            color: isAnexo11Valido() ? 'white' : '#94a3b8',
+                            cursor: isAnexo11Valido() ? 'pointer' : 'not-allowed',
+                            fontWeight: 600
+                          }}
+                        >
+                          Pasar Proyecto a Siguiente Etapa (Revisión Técnica)
+                        </button>
+                        {!isAnexo11Valido() && (
+                          <span style={{ fontSize: '10.5px', color: '#9c400c', fontWeight: 500, textAlign: 'center' }}>
+                            (Se habilitará solo si el Anexo 27 está completo y se llenó la justificación técnica en este formulario)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ACCIONES DE CONFLICTO (Anexo 23) */}
+                    {activeAnexoId === 'anexo-23' && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#991b1b' }}>Declaración de Conflicto de Interés (Anexo 23)</h4>
+                        
+                        <button 
+                          type="button" 
+                          className="eval-btn" 
+                          onClick={handleDeclararConflictoDirect}
+                          disabled={!isAnexo23Valido()}
+                          style={{ 
+                            width: '100%', 
+                            backgroundColor: isAnexo23Valido() ? '#ef4444' : '#cbd5e1', 
+                            color: isAnexo23Valido() ? 'white' : '#94a3b8',
+                            cursor: isAnexo23Valido() ? 'pointer' : 'not-allowed',
+                            fontWeight: 600
+                          }}
+                        >
+                          Confirmar Inhibición y Salir del Trámite
+                        </button>
+                        {!isAnexo23Valido() && (
+                          <span style={{ fontSize: '10.5px', color: '#991b1b', fontWeight: 500, textAlign: 'center' }}>
+                            (Se habilitará solo si el Anexo 27 está completo, los campos obligatorios del Anexo 11 están llenos, y se detalla la causa de conflicto en este formulario)
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -1009,9 +1360,26 @@ export function ReviewCeishPage() {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {/* Botón A: Aprobar Proyecto */}
-                          <button type="button" className="eval-btn eval-btn--primary" onClick={handleAprobarProyecto} style={{ width: '100%', background: '#16a34a' }}>
-                            Aprobar Proyecto (Anexo 13)
+                          <button 
+                            type="button" 
+                            className="eval-btn" 
+                            onClick={handleAprobarMetodologico} 
+                            disabled={!isAnexo12Valido()}
+                            style={{ 
+                              width: '100%', 
+                              backgroundColor: isAnexo12Valido() ? '#16a34a' : '#cbd5e1', 
+                              color: isAnexo12Valido() ? 'white' : '#94a3b8',
+                              cursor: isAnexo12Valido() ? 'pointer' : 'not-allowed',
+                              fontWeight: 600
+                            }}
+                          >
+                            Confirmar Aprobación Técnica (Anexo 13)
                           </button>
+                          {!isAnexo12Valido() && (
+                            <span style={{ fontSize: '10.5px', color: '#9c400c', fontWeight: 500, textAlign: 'center', marginBottom: '6px' }}>
+                              (Se habilitará solo si se completan las observaciones generales obligatorias de este formulario)
+                            </span>
+                          )}
 
                           {/* Botón B: No Aprobar (Devolver con observaciones) */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1030,12 +1398,63 @@ export function ReviewCeishPage() {
                               </span>
                             )}
                           </div>
-
-                          {/* Botón C: Dar de Baja */}
-                          <button type="button" className="eval-btn eval-btn--danger" onClick={handleDarDeBaja} style={{ width: '100%' }}>
-                            Dar de Baja la Investigación (Anexo 26)
-                          </button>
                         </div>
+                      </div>
+                    )}
+
+                    {/* ACCIONES DE APROBACIÓN (Anexo 13) */}
+                    {documento.estado === 'revision-tecnica' && activeAnexoId === 'anexo-13' && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f0fdf4', padding: '14px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#166534' }}>Aprobación y Resolución Final (Anexo 13)</h4>
+                        
+                        <button 
+                          type="button" 
+                          className="eval-btn" 
+                          onClick={handleCompletarAprobacionFinal} 
+                          disabled={!isAnexo13Valido()}
+                          style={{ 
+                            width: '100%', 
+                            backgroundColor: isAnexo13Valido() ? '#16a34a' : '#cbd5e1', 
+                            color: isAnexo13Valido() ? 'white' : '#94a3b8',
+                            cursor: isAnexo13Valido() ? 'pointer' : 'not-allowed',
+                            fontWeight: 600
+                          }}
+                        >
+                          Emitir Resolución y Aprobar Proyecto
+                        </button>
+                        {!isAnexo13Valido() && (
+                          <span style={{ fontSize: '10.5px', color: '#9c400c', fontWeight: 500, textAlign: 'center' }}>
+                            (Se habilitará solo si el Anexo 12 fue aprobado y se llenan los campos obligatorios de este formulario)
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ACCIONES DE BAJA/SUSPENSIÓN (Anexo 26) */}
+                    {documento.estado === 'revision-tecnica' && activeAnexoId === 'anexo-26' && (
+                      <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#fef2f2', padding: '14px', borderRadius: '8px', border: '1px solid #fca5a5' }}>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#991b1b' }}>Dar de Baja / Suspender Proyecto (Anexo 26)</h4>
+                        
+                        <button 
+                          type="button" 
+                          className="eval-btn" 
+                          onClick={handleCompletarBajaFinal} 
+                          disabled={!isAnexo26Valido()}
+                          style={{ 
+                            width: '100%', 
+                            backgroundColor: isAnexo26Valido() ? '#ef4444' : '#cbd5e1', 
+                            color: isAnexo26Valido() ? 'white' : '#94a3b8',
+                            cursor: isAnexo26Valido() ? 'pointer' : 'not-allowed',
+                            fontWeight: 600
+                          }}
+                        >
+                          Confirmar Baja y Archivar Expediente
+                        </button>
+                        {!isAnexo26Valido() && (
+                          <span style={{ fontSize: '10.5px', color: '#991b1b', fontWeight: 500, textAlign: 'center' }}>
+                            (Se habilitará solo si se ingresa la justificación en el formulario superior)
+                          </span>
+                        )}
                       </div>
                     )}
 
@@ -1221,6 +1640,54 @@ export function ReviewCeishPage() {
               <button className="eval-btn eval-btn--outline" onClick={() => setShowEscalarModal(false)}>Cancelar</button>
               <button className="eval-btn eval-btn--primary" onClick={handleEscalarAdmin} disabled={!escalamientoComentario.trim()}>
                 Escalar caso
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Historial de Rondas Anteriores */}
+      {showHistorialRondasModal && (
+        <div className="modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowHistorialRondasModal(false); }}>
+          <div className="modal" style={{ maxWidth: '650px', width: '90%' }}>
+            <div className="modal__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px' }}>
+              <h3 className="modal__title" style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+                Historial de Revisiones (Rondas Anteriores)
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setShowHistorialRondasModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal__body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+              {rondasPreviasA12.map((ron, rIdx) => (
+                <div key={ron.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '8px' }}>
+                  <p style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: '#334155' }}>
+                    Ronda #{rIdx + 1} (Archivo Evaluado: {documento.versionesArchivo.find(v => v.id === ron.versionArchivoId)?.documentName || 'Desconocido'})
+                  </p>
+                  <p style={{ margin: '2px 0 8px 0', fontSize: '10.5px', color: '#64748b' }}>
+                    Evaluado el: {new Date(ron.emitidoAt).toLocaleString()} por {ron.emitidoPorNombre}
+                  </p>
+                  
+                  <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px' }}>
+                    <p style={{ margin: '0 0 6px 0', fontSize: '11px', fontWeight: 600, color: '#475569' }}>Observaciones registradas (Modo Lectura):</p>
+                    <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '11.5px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {ron.comentariosAnotados.map(c => (
+                        <li key={c.id}>
+                          <strong>Pág. {c.paginaPdf}:</strong> "{c.texto}"
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="modal__footer" style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #cbd5e1', paddingTop: '10px' }}>
+              <button className="eval-btn eval-btn--primary" onClick={() => setShowHistorialRondasModal(false)}>
+                Cerrar
               </button>
             </div>
           </div>
@@ -1429,6 +1896,43 @@ export function ReviewCeishPage() {
                                     </span>
                                   )}
                                 </div>
+                              ) : p.tipo === 'si-no' ? (
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInvestigadorFormState(prev => ({ ...prev, [p.id]: 'SI' }))}
+                                    style={{
+                                      padding: '6px 16px',
+                                      borderRadius: '20px',
+                                      border: '1px solid #cbd5e1',
+                                      backgroundColor: currentVal === 'SI' ? '#10b981' : '#f8fafc',
+                                      color: currentVal === 'SI' ? 'white' : '#475569',
+                                      fontWeight: 600,
+                                      fontSize: '12px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                    }}
+                                  >
+                                    Sí
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setInvestigadorFormState(prev => ({ ...prev, [p.id]: 'NO' }))}
+                                    style={{
+                                      padding: '6px 16px',
+                                      borderRadius: '20px',
+                                      border: '1px solid #cbd5e1',
+                                      backgroundColor: currentVal === 'NO' ? '#ef4444' : '#f8fafc',
+                                      color: currentVal === 'NO' ? 'white' : '#475569',
+                                      fontWeight: 600,
+                                      fontSize: '12px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                    }}
+                                  >
+                                    No
+                                  </button>
+                                </div>
                               ) : (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                                   <input
@@ -1468,9 +1972,9 @@ export function ReviewCeishPage() {
                                 )
                               ) : (
                                 <p style={{ margin: 0, color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', whiteSpace: 'pre-wrap', fontSize: '13px' }}>
-                                  {typeof currentVal === 'boolean'
+                                  {currentVal === 'SI' ? 'Sí' : currentVal === 'NO' ? 'No' : (typeof currentVal === 'boolean'
                                     ? (currentVal ? 'Sí (Conforme)' : 'No')
-                                    : (currentVal ? String(currentVal) : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>)
+                                    : (currentVal ? String(currentVal) : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>))
                                   }
                                 </p>
                               )

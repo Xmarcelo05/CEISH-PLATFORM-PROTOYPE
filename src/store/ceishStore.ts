@@ -1126,16 +1126,16 @@ export const useCeishStore = create<CeishState>()(
             id: generateUUID(),
             documentoId,
             evaluadorId: nuevoEvaluador.id,
-            seccionId: 'sec-estratificacion',
+            seccionId: 'sec-evaluacion',
             assignedAt: timestamp,
             active: true
           };
 
           asignacionFinal.push(nuevaAsignacion);
-          comentarioHistorial += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name}.`;
+          comentarioHistorial += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name} para la siguiente etapa.`;
           nuevasNotificaciones = nuevasNotificaciones.concat(buildNotificaciones(
             [nuevoEvaluador.id],
-            `Se te ha asignado el proyecto ${doc.codigo} para evaluación.`,
+            `Se te ha asignado el proyecto ${doc.codigo} para evaluación técnica.`,
             timestamp
           ));
         } else {
@@ -1144,12 +1144,12 @@ export const useCeishStore = create<CeishState>()(
 
         const docActualizado: Documento = {
           ...doc,
-          estado: 'estratificacion',
+          estado: 'revision-tecnica',
           miembrosCeishDeclarados: exclusionesActualizadas,
           historialEstados: [
             ...doc.historialEstados,
             {
-              estado: 'estratificacion',
+              estado: 'revision-tecnica',
               changedAt: timestamp,
               changedBy: evaluadorNombre,
               comment: comentarioHistorial

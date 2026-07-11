@@ -324,6 +324,7 @@ export function AnexoTemplateCRUD() {
                             <option value="checklist">Checkbox de Conformidad</option>
                             <option value="texto-libre">Respuesta Abierta (Texto)</option>
                             <option value="archivo">Adjuntar Archivo (Imagen o PDF)</option>
+                            <option value="si-no">Opción Sí o No (Botones)</option>
                           </select>
                         </div>
 

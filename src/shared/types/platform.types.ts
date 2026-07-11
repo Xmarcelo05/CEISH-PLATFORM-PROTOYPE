@@ -91,7 +91,7 @@ export interface Autor {
 }
 
 // ─── Motor Configurable: Preguntas y Plantillas de Anexos ───────────────────
-export type CampoTipo = 'checklist' | 'texto-libre' | 'archivo';
+export type CampoTipo = 'checklist' | 'texto-libre' | 'archivo' | 'si-no';
 
 export interface Pregunta {
   id: string;
