@@ -63,10 +63,10 @@ export async function listAsignaciones(): Promise<AsignacionRow[]> {
   );
 }
 
-interface EvaluadorCandidato { id: string; cedula: string | null }
+export interface EvaluadorCandidato { id: string; cedula: string | null }
 
 /** Evaluadores reales (rol 'teacher' en BD) menos las exclusiones manuales y por conflicto de cédula. */
-async function evaluadoresDisponibles(
+export async function evaluadoresDisponibles(
   client: PoolClient,
   autores: Autor[],
   exclusionesManual: string[],
@@ -339,10 +339,15 @@ export async function subirCorreccion(
       [documentoId],
     );
 
+    // Corrigió a tiempo: se limpia el plazo de 30 días del Anexo 12 (si había uno).
+    const cronometro = doc.cronometro?.fechaLimiteCorreccion
+      ? { ...doc.cronometro, fechaLimiteCorreccion: undefined }
+      : doc.cronometro;
+
     const updated = await client.query<DocumentoRow>(
-      `UPDATE ceish_documentos SET estado = 'revision-tecnica', versiones_archivo = $2::jsonb, historial_estados = $3::jsonb
+      `UPDATE ceish_documentos SET estado = 'revision-tecnica', versiones_archivo = $2::jsonb, historial_estados = $3::jsonb, cronometro = $4::jsonb
         WHERE id = $1 RETURNING ${DOC_COLUMNS}`,
-      [documentoId, JSON.stringify(versionesArchivo), JSON.stringify(historialEstados)],
+      [documentoId, JSON.stringify(versionesArchivo), JSON.stringify(historialEstados), JSON.stringify(cronometro)],
     );
 
     return { documento: updated.rows[0] };

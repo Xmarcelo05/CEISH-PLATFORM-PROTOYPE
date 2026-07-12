@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node _verify_riesgo.mjs)",
+      "Bash(node _verify_riesgo2.mjs)",
+      "Bash(node _verify_riesgo3.mjs)",
+      "Bash(node _verify_riesgo4.mjs)",
+      "Bash(rm -f _verify_riesgo.mjs _verify_riesgo2.mjs _verify_riesgo3.mjs _verify_riesgo4.mjs _debug.mjs)",
+      "Bash(npm uninstall *)"
+    ]
+  }
+}

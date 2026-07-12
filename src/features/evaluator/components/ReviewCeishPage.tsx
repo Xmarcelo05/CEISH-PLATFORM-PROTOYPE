@@ -26,10 +26,11 @@ export function ReviewCeishPage() {
     anexosTemplates, 
     tiposDocumento, 
     respuestasAnexos, 
-    emitirAnexo, 
-    guardarRespuestaAnexo, 
+    emitirAnexo,
+    guardarRespuestaAnexo,
     darseDeBajaRevisor,
-    crearEscalamiento 
+    elevarRiesgo,
+    crearEscalamiento
   } = useCeishStore();
 
   const documento = documentos.find((d) => d.id === investigacionId);
@@ -120,12 +121,12 @@ export function ReviewCeishPage() {
         // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
         template?.preguntas.forEach(p => {
           if (iniciales[p.id] === undefined) {
-            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : p.tipo === 'seleccion-multiple' ? [] : '';
           }
         });
       } else {
         template?.preguntas.forEach(p => {
-          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : p.tipo === 'seleccion-multiple' ? [] : '';
         });
       }
       setInvestigadorFormState(iniciales);
@@ -150,12 +151,12 @@ export function ReviewCeishPage() {
         // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
         template?.preguntas.forEach(p => {
           if (iniciales[p.id] === undefined) {
-            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : p.tipo === 'seleccion-multiple' ? [] : '';
           }
         });
       } else {
         template?.preguntas.forEach(p => {
-          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+          iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : p.tipo === 'seleccion-multiple' ? [] : '';
         });
       }
       setRespuestasForm(iniciales);
@@ -327,39 +328,23 @@ export function ReviewCeishPage() {
     }
   };
 
-  // ACCIÓN 2: Elevar Riesgo (Fuera de Alcance del Prototipo)
-  const handleElevarRiesgo = () => {
+  // ACCIÓN 2: Elevar Riesgo — pasa a Revisión Técnica con 2 evaluadores nuevos
+  const handleElevarRiesgo = async () => {
     const justificacionText = respuestasForm[Object.keys(respuestasForm).slice(-1)[0]] || '';
     if (!justificacionText.trim()) {
       return alert('Debe detallar la justificación técnica de la reclasificación.');
     }
+    if (!window.confirm(`¿Confirma reclasificar el riesgo a "${nuevoRiesgoEleccion.replace('-', ' ')}" y enviar el proyecto a Revisión Técnica con 2 evaluadores?`)) {
+      return;
+    }
 
-    const versionId = latestVersion?.id || '';
-    const valoresA27: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
-      campoId: key,
-      valor: respuestasForm[key]
-    }));
-
-    // Emitir Anexo 27 con Discrepa
-    emitirAnexo(
-      {
-        anexoTemplateId: 'anexo-27',
-        documentoId: documento.id,
-        seccionId: activeSeccion.id,
-        versionArchivoId: versionId,
-        emitidoPorId: currentUser.id,
-        emitidoPorNombre: currentUser.name,
-        valores: valoresA27,
-        comentariosAnotados: []
-      },
-      'discrepa',
-      'revision-tecnica',
-      `Estratificación modificada a: ${nuevoRiesgoEleccion.replace('-', ' ')}. Justificación: ${justificacionText}`,
-      nuevoRiesgoEleccion
-    );
-
-    window.alert(`El riesgo del proyecto ha sido reclasificado a ${nuevoRiesgoEleccion.replace('-', ' ')}. El trámite queda congelado fuera de alcance.`);
-    navigate('/evaluador');
+    try {
+      await elevarRiesgo(documento.id, currentUser.id, currentUser.name, nuevoRiesgoEleccion, justificacionText);
+      window.alert('Riesgo reclasificado. El proyecto pasó a Revisión Técnica con 2 evaluadores asignados.');
+      navigate('/evaluador');
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Error al reclasificar el riesgo.');
+    }
   };
 
   const handleDarDeBajaConfirm = async () => {
@@ -404,7 +389,7 @@ export function ReviewCeishPage() {
 
     try {
       await darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, conflictoComentario.trim());
-      window.alert('Se ha registrado su conflicto de interés (Anexo 23). La plataforma lo ha retirado de este proyecto y asignado otro revisor.');
+      window.alert('Se ha registrado su conflicto de interés (Anexo 23). La plataforma lo ha retirado de este proyecto y asignado otro revisor para continuar en la misma etapa.');
       navigate('/evaluador');
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Error al declarar el conflicto de interés.');
@@ -446,7 +431,7 @@ export function ReviewCeishPage() {
 
     try {
       await darseDeBajaRevisor(documento.id, currentUser.id, currentUser.name, textoVal.trim());
-      window.alert('Se ha registrado su conflicto de interés (Anexo 23). El proyecto pasará a la siguiente etapa (Revisión Técnica) con un nuevo revisor asignado.');
+      window.alert('Se ha registrado su conflicto de interés (Anexo 23). Se asignó un nuevo revisor para continuar en la misma etapa.');
       navigate('/evaluador');
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Error al declarar el conflicto de interés.');
@@ -583,9 +568,18 @@ export function ReviewCeishPage() {
   // DISPARADORES DE ACCIÓN (Mapeados por Anexo ID en Evaluación Técnica)
   // ============================================================================
 
+  // El Anexo 12 ya fue devuelto con observaciones para la versión de archivo
+  // vigente: no debe poder volver a aprobarse/rechazarse hasta que el
+  // investigador suba una corrección (lo que genera una nueva versión y hace
+  // que esta respuesta deje de coincidir automáticamente).
+  const anexo12ConObservacionesPendiente = respuestasAnexos.some(
+    r => r.documentoId === documento.id && r.anexoTemplateId === 'anexo-12' && r.resultado === 'con-observaciones' && r.versionArchivoId === latestVersion?.id
+  );
+
   // ACCIÓN A: Aprobar Metodológicamente (Emisión de Anexo 12, redirige a Anexo 13)
   const isAnexo12Valido = () => {
     if (!requisitosAnexo('anexo-12').desbloqueado) return false;
+    if (anexo12ConObservacionesPendiente) return false;
 
     const template12 = anexosTemplates.find(t => t.id === 'anexo-12');
     if (!template12) return false;
@@ -768,6 +762,7 @@ export function ReviewCeishPage() {
   // ACCIÓN B: No Aprobar (Devolver con observaciones, mantiene revisión técnica)
   const handleNoAprobarDevolver = async () => {
     if (anotaciones.length === 0) return;
+    if (anexo12ConObservacionesPendiente) return;
 
     if (!window.confirm('¿Está seguro de que desea no aprobar el proyecto y devolverlo al investigador con observaciones?')) {
       return;
@@ -1055,6 +1050,56 @@ export function ReviewCeishPage() {
                                 No
                               </button>
                             </div>
+                          ) : p.tipo === 'seleccion-unica' ? (
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                              {(p.opciones ?? []).map(op => (
+                                <button
+                                  key={op}
+                                  type="button"
+                                  onClick={() => handlePreguntaChange(p.id, op)}
+                                  style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '20px',
+                                    border: '1px solid #cbd5e1',
+                                    backgroundColor: respuestasForm[p.id] === op ? '#3b82f6' : '#f8fafc',
+                                    color: respuestasForm[p.id] === op ? 'white' : '#475569',
+                                    fontWeight: 600,
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                  }}
+                                >
+                                  {op}
+                                </button>
+                              ))}
+                            </div>
+                          ) : p.tipo === 'seleccion-multiple' ? (
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                              {(p.opciones ?? []).map(op => {
+                                const arr = Array.isArray(respuestasForm[p.id]) ? respuestasForm[p.id] : [];
+                                const active = arr.includes(op);
+                                return (
+                                  <button
+                                    key={op}
+                                    type="button"
+                                    onClick={() => handlePreguntaChange(p.id, active ? arr.filter((o: string) => o !== op) : [...arr, op])}
+                                    style={{
+                                      padding: '6px 16px',
+                                      borderRadius: '20px',
+                                      border: '1px solid #cbd5e1',
+                                      backgroundColor: active ? '#3b82f6' : '#f8fafc',
+                                      color: active ? 'white' : '#475569',
+                                      fontWeight: 600,
+                                      fontSize: '12px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                    }}
+                                  >
+                                    {active ? '✓ ' : ''}{op}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           ) : (
                             <label className="checkbox-label" style={{ marginTop: '6px' }}>
                               <input
@@ -1223,6 +1268,27 @@ export function ReviewCeishPage() {
                             Devolver para Correcciones
                           </button>
                         </div>
+
+                        {/* Opción 3: Elevar Riesgo */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid #bfdbfe', paddingTop: '10px' }}>
+                          <select
+                            className="form-input"
+                            value={nuevoRiesgoEleccion}
+                            onChange={(e) => setNuevoRiesgoEleccion(e.target.value as RiesgoTipo)}
+                          >
+                            <option value="riesgo-minimo">Riesgo Mínimo</option>
+                            <option value="riesgo-mayor">Riesgo Mayor</option>
+                          </select>
+                          <button
+                            type="button"
+                            className="eval-btn"
+                            onClick={handleElevarRiesgo}
+                            style={{ width: '100%', backgroundColor: '#d97706', color: 'white' }}
+                          >
+                            Elevar Riesgo y Enviar a Revisión Técnica
+                          </button>
+                          <span style={{ fontSize: '10.5px', color: '#92400e' }}>⚠ Asigna 2 evaluadores nuevos para revisión técnica y saca al proyecto del camino corto de exención.</span>
+                        </div>
                       </div>
                     )}
 
@@ -1282,6 +1348,24 @@ export function ReviewCeishPage() {
                       </div>
                     )}
 
+                    {/* Plazo de corrección del Anexo 12 (verificación al vuelo, sin cron) */}
+                    {documento.estado === 'revision-tecnica' && documento.cronometro?.fechaLimiteCorreccion && (() => {
+                      const fechaLimite = documento.cronometro!.fechaLimiteCorreccion!;
+                      const vencido = new Date() > new Date(fechaLimite);
+                      return (
+                        <div style={{
+                          padding: '10px', borderRadius: '6px',
+                          background: vencido ? '#fef2f2' : '#fffbeb',
+                          border: `1px solid ${vencido ? '#fca5a5' : '#fde68a'}`,
+                          fontSize: '11.5px', color: vencido ? '#991b1b' : '#92400e',
+                        }}>
+                          {vencido
+                            ? `⚠️ Plazo de corrección vencido (venció el ${new Date(fechaLimite).toLocaleDateString('es-ES')}). Puede anularse por incumplimiento desde la pestaña Anexo 26.`
+                            : `⏳ El investigador tiene hasta el ${new Date(fechaLimite).toLocaleDateString('es-ES')} para corregir.`}
+                        </div>
+                      );
+                    })()}
+
                     {/* ACCIONES DE EVALUACIÓN TÉCNICA (Etapa 3) */}
                     {documento.estado === 'revision-tecnica' && activeAnexoId === 'anexo-12' && (
                       <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
@@ -1306,22 +1390,28 @@ export function ReviewCeishPage() {
                           </button>
                           {!isAnexo12Valido() && (
                             <span style={{ fontSize: '10.5px', color: '#9c400c', fontWeight: 500, textAlign: 'center', marginBottom: '6px' }}>
-                              (Se habilitará solo si se completan las observaciones generales obligatorias de este formulario)
+                              {anexo12ConObservacionesPendiente
+                                ? '(Ya se devolvió esta versión con observaciones — espere a que el investigador suba la corrección)'
+                                : '(Se habilitará solo si se completan las observaciones generales obligatorias de este formulario)'}
                             </span>
                           )}
 
                           {/* Botón B: No Aprobar (Devolver con observaciones) */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <button 
-                              type="button" 
-                              className="eval-btn eval-btn--outline" 
-                              onClick={handleNoAprobarDevolver} 
-                              disabled={anotaciones.length === 0}
+                            <button
+                              type="button"
+                              className="eval-btn eval-btn--outline"
+                              onClick={handleNoAprobarDevolver}
+                              disabled={anotaciones.length === 0 || anexo12ConObservacionesPendiente}
                               style={{ width: '100%', borderColor: '#d97706', color: '#d97706' }}
                             >
                               No Aprobar (Devolver con Observaciones)
                             </button>
-                            {anotaciones.length === 0 && (
+                            {anexo12ConObservacionesPendiente ? (
+                              <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 600, textAlign: 'center' }}>
+                                (Ya se devolvió esta versión con observaciones — espere a que el investigador suba la corrección)
+                              </span>
+                            ) : anotaciones.length === 0 && (
                               <span style={{ fontSize: '10px', color: '#b45309', fontWeight: 600, textAlign: 'center' }}>
                                 (Requiere agregar al menos una observación por página en el panel superior)
                               </span>
@@ -1691,7 +1781,7 @@ export function ReviewCeishPage() {
                                 });
                               } else {
                                 template.preguntas.forEach(p => {
-                                  iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+                                  iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : p.tipo === 'seleccion-multiple' ? [] : '';
                                 });
                               }
                               setInvestigadorFormState(iniciales);
@@ -1842,6 +1932,56 @@ export function ReviewCeishPage() {
                                     No
                                   </button>
                                 </div>
+                              ) : p.tipo === 'seleccion-unica' ? (
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                  {(p.opciones ?? []).map(op => (
+                                    <button
+                                      key={op}
+                                      type="button"
+                                      onClick={() => setInvestigadorFormState(prev => ({ ...prev, [p.id]: op }))}
+                                      style={{
+                                        padding: '6px 16px',
+                                        borderRadius: '20px',
+                                        border: '1px solid #cbd5e1',
+                                        backgroundColor: currentVal === op ? '#3b82f6' : '#f8fafc',
+                                        color: currentVal === op ? 'white' : '#475569',
+                                        fontWeight: 600,
+                                        fontSize: '12px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                      }}
+                                    >
+                                      {op}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : p.tipo === 'seleccion-multiple' ? (
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                  {(p.opciones ?? []).map(op => {
+                                    const arr = Array.isArray(currentVal) ? currentVal : [];
+                                    const active = arr.includes(op);
+                                    return (
+                                      <button
+                                        key={op}
+                                        type="button"
+                                        onClick={() => setInvestigadorFormState(prev => ({ ...prev, [p.id]: active ? arr.filter((o: string) => o !== op) : [...arr, op] }))}
+                                        style={{
+                                          padding: '6px 16px',
+                                          borderRadius: '20px',
+                                          border: '1px solid #cbd5e1',
+                                          backgroundColor: active ? '#3b82f6' : '#f8fafc',
+                                          color: active ? 'white' : '#475569',
+                                          fontWeight: 600,
+                                          fontSize: '12px',
+                                          cursor: 'pointer',
+                                          transition: 'all 0.2s',
+                                        }}
+                                      >
+                                        {active ? '✓ ' : ''}{op}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               ) : (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                                   <input
@@ -1874,6 +2014,10 @@ export function ReviewCeishPage() {
                                     <em>Sin archivo adjunto</em>
                                   </p>
                                 )
+                              ) : p.tipo === 'seleccion-multiple' ? (
+                                <p style={{ margin: 0, color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', fontSize: '13px' }}>
+                                  {Array.isArray(currentVal) && currentVal.length > 0 ? currentVal.join(', ') : <em style={{ color: '#94a3b8' }}>Sin respuesta</em>}
+                                </p>
                               ) : (
                                 <p style={{ margin: 0, color: '#0f172a', background: '#f8fafc', padding: '6px 8px', borderRadius: '4px', borderLeft: '3px solid #cbd5e1', whiteSpace: 'pre-wrap', fontSize: '13px' }}>
                                   {currentVal === 'SI' ? 'Sí' : currentVal === 'NO' ? 'No' : (typeof currentVal === 'boolean'

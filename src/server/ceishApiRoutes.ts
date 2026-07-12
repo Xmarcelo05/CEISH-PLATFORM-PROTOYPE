@@ -24,7 +24,7 @@ import {
 } from './queries/ceish/documentos';
 import type { CrearDocumentoInput, EditarDocumentoInput } from './queries/ceish/documentos';
 import {
-  listRespuestasAnexo, guardarRespuestaAnexo, emitirAnexo, darseDeBajaRevisor,
+  listRespuestasAnexo, guardarRespuestaAnexo, emitirAnexo, darseDeBajaRevisor, elevarRiesgoTecnica,
 } from './queries/ceish/respuestas';
 import type { GuardarRespuestaInput, EmitirAnexoInput } from './queries/ceish/respuestas';
 import {
@@ -190,6 +190,22 @@ export async function handleCeishRoute(
       sendJson(res, 200, result);
     } catch (err) {
       sendJson(res, 400, { error: err instanceof Error ? err.message : 'Error al procesar la inhibición del revisor.' });
+    }
+    return true;
+  }
+
+  // POST /api/ceish/documentos/:id/elevar-riesgo — Estratificación con riesgo -> Revisión Técnica (2 evaluadores)
+  const elevarRiesgoMatch = path.match(/^\/api\/ceish\/documentos\/([^/]+)\/elevar-riesgo$/);
+  if (elevarRiesgoMatch && method === 'POST') {
+    const b = await readJsonBody(req);
+    try {
+      const result = await elevarRiesgoTecnica(
+        elevarRiesgoMatch[1], String(b.evaluadorId ?? ''), String(b.evaluadorNombre ?? ''),
+        b.nuevoRiesgoConfirmado as 'riesgo-minimo' | 'riesgo-mayor', String(b.justificacion ?? ''),
+      );
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 400, { error: err instanceof Error ? err.message : 'Error al elevar el riesgo del proyecto.' });
     }
     return true;
   }

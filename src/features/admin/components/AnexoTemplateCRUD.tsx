@@ -70,6 +70,28 @@ export function AnexoTemplateCRUD() {
     setPreguntas(updated);
   };
 
+  const handleAddOpcion = (preguntaIdx: number) => {
+    const updated = [...preguntas];
+    const actuales = updated[preguntaIdx].opciones ?? [];
+    updated[preguntaIdx] = { ...updated[preguntaIdx], opciones: [...actuales, ''] };
+    setPreguntas(updated);
+  };
+
+  const handleRemoveOpcion = (preguntaIdx: number, opcionIdx: number) => {
+    const updated = [...preguntas];
+    const actuales = updated[preguntaIdx].opciones ?? [];
+    updated[preguntaIdx] = { ...updated[preguntaIdx], opciones: actuales.filter((_, i) => i !== opcionIdx) };
+    setPreguntas(updated);
+  };
+
+  const handleOpcionChange = (preguntaIdx: number, opcionIdx: number, value: string) => {
+    const updated = [...preguntas];
+    const actuales = [...(updated[preguntaIdx].opciones ?? [])];
+    actuales[opcionIdx] = value;
+    updated[preguntaIdx] = { ...updated[preguntaIdx], opciones: actuales };
+    setPreguntas(updated);
+  };
+
   const handleMovePregunta = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === preguntas.length - 1) return;
@@ -116,12 +138,19 @@ export function AnexoTemplateCRUD() {
     const vacia = preguntas.some(p => !p.texto.trim() || !p.key?.trim());
     if (vacia) return alert('Por favor, completa la etiqueta del campo y el tag de Word para todas las variables.');
 
+    // Descartar opciones vacías (campos "+ Agregar Opción" dejados en blanco)
+    const preguntasAGuardar = preguntas.map(p => (
+      p.tipo === 'seleccion-unica' || p.tipo === 'seleccion-multiple'
+        ? { ...p, opciones: (p.opciones ?? []).map(o => o.trim()).filter(Boolean) }
+        : p
+    ));
+
     setIsSaving(true);
     try {
       if (editingId) {
-        await editarAnexoTemplate(editingId, numero, nombre, rol, preguntas, wordTemplateName, wordTemplateObjectKey);
+        await editarAnexoTemplate(editingId, numero, nombre, rol, preguntasAGuardar, wordTemplateName, wordTemplateObjectKey);
       } else {
-        await crearAnexoTemplate(numero, nombre, rol, preguntas, wordTemplateName, wordTemplateObjectKey);
+        await crearAnexoTemplate(numero, nombre, rol, preguntasAGuardar, wordTemplateName, wordTemplateObjectKey);
       }
       setIsEditing(false);
       setEditingId(null);
@@ -340,13 +369,15 @@ export function AnexoTemplateCRUD() {
                             <option value="texto-libre">Respuesta Abierta (Texto)</option>
                             <option value="archivo">Adjuntar Archivo (Imagen o PDF)</option>
                             <option value="si-no">Opción Sí o No (Botones)</option>
+                            <option value="seleccion-unica">Selección Única (Radio)</option>
+                            <option value="seleccion-multiple">Selección Múltiple (Checkboxes)</option>
                           </select>
                         </div>
 
                         <div className="form-group flex-1">
                           <label className="form-label">Contexto / Sección (Opcional)</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             className="form-input"
                             value={pregunta.descripcionContexto || ''}
                             onChange={(e) => handlePreguntaChange(idx, 'descripcionContexto', e.target.value)}
@@ -354,6 +385,43 @@ export function AnexoTemplateCRUD() {
                           />
                         </div>
                       </div>
+
+                      {(pregunta.tipo === 'seleccion-unica' || pregunta.tipo === 'seleccion-multiple') && (
+                        <div className="form-row">
+                          <div className="form-group flex-1">
+                            <label className="form-label">Opciones</label>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {(pregunta.opciones ?? []).map((op, opIdx) => (
+                                <div key={opIdx} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  <input
+                                    type="text"
+                                    className="form-input"
+                                    value={op}
+                                    onChange={(e) => handleOpcionChange(idx, opIdx, e.target.value)}
+                                    placeholder={`Opción ${opIdx + 1}`}
+                                    style={{ flex: 1 }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="order-btn order-btn--danger"
+                                    onClick={() => handleRemoveOpcion(idx, opIdx)}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                className="eval-btn eval-btn--sm eval-btn--outline"
+                                onClick={() => handleAddOpcion(idx)}
+                                style={{ alignSelf: 'flex-start' }}
+                              >
+                                + Agregar Opción
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <button 

@@ -36,6 +36,7 @@ function withPreguntaIds(preguntas: AnexoTemplateInput['preguntas']): Pregunta[]
     descripcionContexto: p.descripcionContexto,
     orden: p.orden ?? idx + 1,
     key: p.key || `tag_${idx + 1}`,
+    opciones: p.opciones,
   }));
 }
 

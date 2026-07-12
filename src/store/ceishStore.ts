@@ -106,6 +106,14 @@ interface CeishState {
     comentarioConflicto: string
   ) => Promise<void>;
 
+  elevarRiesgo: (
+    documentoId: string,
+    evaluadorId: string,
+    evaluadorNombre: string,
+    nuevoRiesgoConfirmado: RiesgoTipo,
+    justificacion: string
+  ) => Promise<void>;
+
   subirCorreccion: (
     documentoId: string,
     file: File,
@@ -353,6 +361,23 @@ export const useCeishStore = create<CeishState>()((set) => ({
             documentos: nuevosDocs,
             asignaciones,
             respuestasAnexos: [...otrasRespuestas, ...respuestasAnexos],
+            notificaciones: [...state.notificaciones, ...notificaciones],
+          };
+        });
+      },
+
+      elevarRiesgo: async (documentoId, evaluadorId, evaluadorNombre, nuevoRiesgoConfirmado, justificacion) => {
+        const { documento, notificaciones } = await ceishService.elevarRiesgo(
+          documentoId, evaluadorId, evaluadorNombre, nuevoRiesgoConfirmado, justificacion,
+        );
+        const asignaciones = await ceishService.getAsignaciones();
+        set((state) => {
+          const docIdx = state.documentos.findIndex(d => d.id === documentoId);
+          const nuevosDocs = [...state.documentos];
+          if (docIdx !== -1) nuevosDocs[docIdx] = documento;
+          return {
+            documentos: nuevosDocs,
+            asignaciones,
             notificaciones: [...state.notificaciones, ...notificaciones],
           };
         });

@@ -318,27 +318,19 @@ export function EvaluatorDashboard() {
 
             {/* Botón de Acción Principal destacado */}
             <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '14px', marginTop: '6px' }}>
-              {selectedDoc.riesgoConfirmado === 'riesgo-minimo' || selectedDoc.riesgoConfirmado === 'riesgo-mayor' ? (
-                <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', padding: '10px', borderRadius: '6px', textAlign: 'center' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#b91c1c', fontWeight: 600 }}>
-                    ⚠️ Riesgo confirmado fuera de alcance del CEISH
-                  </p>
-                </div>
-              ) : (
-                <button
-                  className="eval-btn eval-btn--primary"
-                  style={{ width: '100%', padding: '8px', fontSize: '13px', fontWeight: 600 }}
-                  onClick={() => navigate(`/evaluador/revision-ceish/${selectedDoc.id}`)}
-                >
-                  {filtroTab === 'pendientes' ? (
-                    selectedDoc.estado === 'estratificacion' 
-                      ? 'Comenzar Estratificación (Anexo 27)' 
-                      : 'Continuar Evaluación Técnica (Anexo 12)'
-                  ) : (
-                    'Consultar Formulario y Dictamen'
-                  )}
-                </button>
-              )}
+              <button
+                className="eval-btn eval-btn--primary"
+                style={{ width: '100%', padding: '8px', fontSize: '13px', fontWeight: 600 }}
+                onClick={() => navigate(`/evaluador/revision-ceish/${selectedDoc.id}`)}
+              >
+                {filtroTab === 'pendientes' ? (
+                  selectedDoc.estado === 'estratificacion'
+                    ? 'Comenzar Estratificación (Anexo 27)'
+                    : 'Continuar Evaluación Técnica (Anexo 12)'
+                ) : (
+                  'Consultar Formulario y Dictamen'
+                )}
+              </button>
             </div>
 
           </div>

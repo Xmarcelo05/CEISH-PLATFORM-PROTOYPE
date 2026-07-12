@@ -84,6 +84,12 @@ export interface HistorialEstado {
 export interface Cronometro {
   fechaAprobacion?: string; // Inicia al emitir aprobación (Anexo 13)
   diasEjecucion?: number;    // Días transcurridos o planificados
+  /** Fecha límite (ISO) para que el investigador corrija observaciones del
+   *  Anexo 12 antes de que el proyecto pueda anularse por incumplimiento.
+   *  Se estampa al "No Aprobar" el Anexo 12 y se limpia al recibir la
+   *  corrección o al resolver el trámite. Se evalúa al vuelo, no dispara
+   *  nada automáticamente. */
+  fechaLimiteCorreccion?: string;
 }
 
 export interface Autor {
@@ -92,7 +98,7 @@ export interface Autor {
 }
 
 // ─── Motor Configurable: Preguntas y Plantillas de Anexos ───────────────────
-export type CampoTipo = 'checklist' | 'texto-libre' | 'archivo' | 'si-no';
+export type CampoTipo = 'checklist' | 'texto-libre' | 'archivo' | 'si-no' | 'seleccion-unica' | 'seleccion-multiple';
 
 export interface Pregunta {
   id: string;
@@ -101,6 +107,7 @@ export interface Pregunta {
   descripcionContexto?: string; // Texto descriptivo opcional antes de la pregunta
   orden: number;
   key?: string; // Nombre del tag en el Word (ej. "nombre_evaluador")
+  opciones?: string[]; // Solo para 'seleccion-unica' / 'seleccion-multiple'
 }
 
 export interface AnexoTemplate {

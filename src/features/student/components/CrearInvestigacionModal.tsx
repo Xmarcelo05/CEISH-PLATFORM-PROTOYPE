@@ -295,30 +295,37 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                     {autores.map((autor, idx) => {
                       const match = usuarios.find(u => u.cedula === autor.cedula.trim());
                       return (
-                        <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center', background: '#f8fafc', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                          <input
-                            type="text"
-                            placeholder="Cédula"
-                            required
-                            value={autor.cedula}
-                            onChange={(e) => handleCedulaChange(idx, e.target.value)}
-                            style={{ width: '100px', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Nombre"
-                            disabled={!!match}
-                            value={match ? match.name : autor.nombre}
-                            onChange={(e) => handleNombreChange(idx, e.target.value)}
-                            style={{ flex: 1, padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', background: match ? '#e2e8f0' : 'white' }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeAutorField(idx)}
-                            style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }}
-                          >
-                            ✕
-                          </button>
+                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', background: '#f8fafc', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                            <input
+                              type="text"
+                              placeholder="Cédula"
+                              required
+                              value={autor.cedula}
+                              onChange={(e) => handleCedulaChange(idx, e.target.value)}
+                              style={{ width: '100px', padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Nombre"
+                              disabled={!!match}
+                              value={match ? match.name : autor.nombre}
+                              onChange={(e) => handleNombreChange(idx, e.target.value)}
+                              style={{ flex: 1, padding: '4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px', background: match ? '#e2e8f0' : 'white' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeAutorField(idx)}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          {match && match.role === 'evaluator' && (
+                            <span style={{ fontSize: '10.5px', color: '#b45309', fontWeight: 600, paddingLeft: '4px' }}>
+                              ⚠️ Evaluador CEISH — quedará excluido de la asignación ciega de este proyecto.
+                            </span>
+                          )}
                         </div>
                       );
                     })}
@@ -499,6 +506,56 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
                                          No
                                        </button>
                                      </div>
+                                  ) : p.tipo === 'seleccion-unica' ? (
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                      {(p.opciones ?? []).map(op => (
+                                        <button
+                                          key={op}
+                                          type="button"
+                                          onClick={() => handlePreguntaChange(template.id, p.id, op)}
+                                          style={{
+                                            padding: '6px 16px',
+                                            borderRadius: '20px',
+                                            border: '1px solid #cbd5e1',
+                                            backgroundColor: currentVal === op ? '#3b82f6' : '#f8fafc',
+                                            color: currentVal === op ? 'white' : '#475569',
+                                            fontWeight: 600,
+                                            fontSize: '12px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                          }}
+                                        >
+                                          {op}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : p.tipo === 'seleccion-multiple' ? (
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                      {(p.opciones ?? []).map(op => {
+                                        const arr = Array.isArray(currentVal) ? currentVal : [];
+                                        const active = arr.includes(op);
+                                        return (
+                                          <button
+                                            key={op}
+                                            type="button"
+                                            onClick={() => handlePreguntaChange(template.id, p.id, active ? arr.filter((o: string) => o !== op) : [...arr, op])}
+                                            style={{
+                                              padding: '6px 16px',
+                                              borderRadius: '20px',
+                                              border: '1px solid #cbd5e1',
+                                              backgroundColor: active ? '#3b82f6' : '#f8fafc',
+                                              color: active ? 'white' : '#475569',
+                                              fontWeight: 600,
+                                              fontSize: '12px',
+                                              cursor: 'pointer',
+                                              transition: 'all 0.2s',
+                                            }}
+                                          >
+                                            {active ? '✓ ' : ''}{op}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
                                   ) : (
                                     <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                                       <input

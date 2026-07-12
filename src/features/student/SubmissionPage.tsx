@@ -5,7 +5,7 @@ import { ceishService } from '../../services/ceishService';
 import { CrearInvestigacionModal } from './components/CrearInvestigacionModal';
 import { generateDocx } from '../../utils/docxGenerator';
 import { resolverDependenciasAnexo } from '../../shared/utils/anexoDependencies';
-import type { ValorCampo } from '../../shared/types/platform.types';
+import type { ValorCampo, Documento } from '../../shared/types/platform.types';
 import './student.css';
 
 export function SubmissionPage() {
@@ -23,6 +23,7 @@ export function SubmissionPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [filtroTab, setFiltroTab] = useState<'todos' | 'devueltos'>('todos');
 
   // Estados para el llenado dinámico de anexos en la Etapa 1
   const [activeAnexoId, setActiveAnexoId] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export function SubmissionPage() {
         // Inicializar cualquier pregunta nueva del template que no esté en la respuesta guardada
         template?.preguntas.forEach(p => {
           if (iniciales[p.id] === undefined) {
-            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : '';
+            iniciales[p.id] = p.tipo === 'checklist' ? false : p.tipo === 'archivo' ? null : p.tipo === 'seleccion-multiple' ? [] : '';
           }
         });
       } else {
@@ -96,6 +97,8 @@ export function SubmissionPage() {
         dataToInject[tag] = (val === 'SI' || val === true || val === 'true') ? 'SÍ' : (val === 'NO' || val === false || val === 'false') ? 'NO' : '';
       } else if (p.tipo === 'archivo') {
         dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
+      } else if (p.tipo === 'seleccion-multiple') {
+        dataToInject[tag] = Array.isArray(val) ? val.join(', ') : '';
       } else {
         dataToInject[tag] = val || '';
       }
@@ -246,18 +249,32 @@ export function SubmissionPage() {
       });
   };
 
-  // Obtener la última evaluación técnica (Anexo 12) emitida
-  const getUltimoAnexo12Emitido = () => {
-    if (!selectedDoc) return null;
+  // Obtener la última evaluación técnica (Anexo 12) emitida para un documento
+  const getUltimoAnexo12EmitidoPara = (docId: string) => {
     const emisiones = respuestasAnexos.filter(
-      r => r.documentoId === selectedDoc.id && r.anexoTemplateId === 'anexo-12'
+      r => r.documentoId === docId && r.anexoTemplateId === 'anexo-12'
     );
     if (emisiones.length === 0) return null;
     return emisiones.sort((a, b) => new Date(b.emitidoAt).getTime() - new Date(a.emitidoAt).getTime())[0];
   };
 
-  const ultimoA12 = getUltimoAnexo12Emitido();
+  const ultimoA12 = selectedDoc ? getUltimoAnexo12EmitidoPara(selectedDoc.id) : null;
   const tieneObservacionesPendientes = selectedDoc?.estado === 'revision-tecnica' && ultimoA12?.resultado === 'con-observaciones';
+
+  // Un documento cuenta como "devuelto para cambios" si: volvió a borrador tras
+  // haber sido enviado antes (más de 1 entrada de historial), o si su última
+  // evaluación técnica (Anexo 12) para la versión vigente tiene observaciones.
+  const esDevuelto = (doc: Documento) => {
+    if (doc.estado === 'creada' && doc.historialEstados.length > 1) return true;
+    if (doc.estado === 'revision-tecnica') {
+      const a12 = getUltimoAnexo12EmitidoPara(doc.id);
+      const latest = doc.versionesArchivo.slice(-1)[0];
+      return a12?.resultado === 'con-observaciones' && a12.versionArchivoId === latest?.id;
+    }
+    return false;
+  };
+
+  const misDocumentosFiltrados = filtroTab === 'todos' ? misDocumentos : misDocumentos.filter(esDevuelto);
 
   return (
     <div className="page">
@@ -278,7 +295,23 @@ export function SubmissionPage() {
         
         {/* Tabla / Lista de Investigaciones */}
         <div className="card" style={{ padding: '20px', background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          {misDocumentos.length === 0 ? (
+          <div className="eval-tabs" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '16px', display: 'flex', gap: '6px' }}>
+            <button
+              className={`eval-tabs__btn ${filtroTab === 'todos' ? 'active' : ''}`}
+              onClick={() => setFiltroTab('todos')}
+              style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Todos ({misDocumentos.length})
+            </button>
+            <button
+              className={`eval-tabs__btn ${filtroTab === 'devueltos' ? 'active' : ''}`}
+              onClick={() => setFiltroTab('devueltos')}
+              style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Devueltos para Cambios ({misDocumentos.filter(esDevuelto).length})
+            </button>
+          </div>
+          {misDocumentosFiltrados.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 0' }}>
               <div className="empty-state__icon" style={{ margin: '0 auto 16px auto' }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
@@ -286,13 +319,19 @@ export function SubmissionPage() {
                   <path d="M12 11v6M9 14h6" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
               </div>
-              <h2 className="empty-state__title">No tienes investigaciones registradas</h2>
+              <h2 className="empty-state__title">
+                {filtroTab === 'devueltos' ? 'No tienes proyectos devueltos para cambios' : 'No tienes investigaciones registradas'}
+              </h2>
               <p className="empty-state__desc" style={{ maxWidth: '400px', margin: '8px auto 16px auto', color: '#64748b' }}>
-                Comience registrando su protocolo de investigación y completando la ficha de anexos requeridos para solicitar la revisión.
+                {filtroTab === 'devueltos'
+                  ? 'Aquí aparecerán los proyectos que un evaluador o el CEISH devuelva con observaciones o cambios a realizar.'
+                  : 'Comience registrando su protocolo de investigación y completando la ficha de anexos requeridos para solicitar la revisión.'}
               </p>
-              <button className="eval-btn eval-btn--primary" onClick={() => setModalOpen(true)}>
-                Registrar Proyecto
-              </button>
+              {filtroTab === 'todos' && (
+                <button className="eval-btn eval-btn--primary" onClick={() => setModalOpen(true)}>
+                  Registrar Proyecto
+                </button>
+              )}
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -306,7 +345,7 @@ export function SubmissionPage() {
                 </tr>
               </thead>
               <tbody>
-                {misDocumentos.map((doc) => (
+                {misDocumentosFiltrados.map((doc) => (
                   <tr 
                     key={doc.id} 
                     onClick={() => setSelectedDocId(doc.id)}
@@ -433,6 +472,18 @@ export function SubmissionPage() {
                 <p style={{ fontSize: '11px', color: '#713f12', margin: 0 }}>
                   Su revisión metodológica actual (Anexo 12) tiene observaciones. Suba una nueva versión de su PDF con las correcciones integradas.
                 </p>
+
+                {selectedDoc.cronometro?.fechaLimiteCorreccion && (() => {
+                  const fechaLimite = selectedDoc.cronometro!.fechaLimiteCorreccion!;
+                  const vencido = new Date() > new Date(fechaLimite);
+                  return (
+                    <p style={{ fontSize: '11px', fontWeight: 700, margin: 0, color: vencido ? '#991b1b' : '#854d0e' }}>
+                      {vencido
+                        ? `⚠️ Plazo vencido (venció el ${new Date(fechaLimite).toLocaleDateString('es-ES')}). Su proyecto puede ser anulado por incumplimiento.`
+                        : `⏳ Tiene hasta el ${new Date(fechaLimite).toLocaleDateString('es-ES')} para subir su corrección.`}
+                    </p>
+                  );
+                })()}
 
                 {ultimoA12 && ultimoA12.comentariosAnotados.length > 0 && (
                   <div style={{ background: 'white', padding: '8px', borderRadius: '6px', border: '1px solid #fcd34d', maxHeight: '100px', overflowY: 'auto' }}>
@@ -671,6 +722,56 @@ export function SubmissionPage() {
                                   No
                                 </button>
                               </div>
+                            ) : p.tipo === 'seleccion-unica' ? (
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                {(p.opciones ?? []).map(op => (
+                                  <button
+                                    key={op}
+                                    type="button"
+                                    onClick={() => setRespuestasForm({ ...respuestasForm, [p.id]: op })}
+                                    style={{
+                                      padding: '6px 16px',
+                                      borderRadius: '20px',
+                                      border: '1px solid #cbd5e1',
+                                      backgroundColor: respuestasForm[p.id] === op ? '#3b82f6' : '#f8fafc',
+                                      color: respuestasForm[p.id] === op ? 'white' : '#475569',
+                                      fontWeight: 600,
+                                      fontSize: '12px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                    }}
+                                  >
+                                    {op}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : p.tipo === 'seleccion-multiple' ? (
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                                {(p.opciones ?? []).map(op => {
+                                  const arr = Array.isArray(respuestasForm[p.id]) ? respuestasForm[p.id] : [];
+                                  const active = arr.includes(op);
+                                  return (
+                                    <button
+                                      key={op}
+                                      type="button"
+                                      onClick={() => setRespuestasForm({ ...respuestasForm, [p.id]: active ? arr.filter((o: string) => o !== op) : [...arr, op] })}
+                                      style={{
+                                        padding: '6px 16px',
+                                        borderRadius: '20px',
+                                        border: '1px solid #cbd5e1',
+                                        backgroundColor: active ? '#3b82f6' : '#f8fafc',
+                                        color: active ? 'white' : '#475569',
+                                        fontWeight: 600,
+                                        fontSize: '12px',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s',
+                                      }}
+                                    >
+                                      {active ? '✓ ' : ''}{op}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             ) : (
                               <label className="checkbox-label" style={{ marginTop: '2px' }}>
                                 <input
@@ -799,6 +900,22 @@ export function SubmissionPage() {
                                   >
                                     Ver
                                   </button>
+                                </div>
+                              );
+                            }
+                            if (pregunta && pregunta.tipo === 'seleccion-unica' && val.valor) {
+                              return (
+                                <div key={val.campoId} style={{ marginTop: '6px', borderTop: '1px dashed #e2e8f0', paddingTop: '4px' }}>
+                                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 500, color: '#475569' }}>{pregunta.texto}:</p>
+                                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>{val.valor}</p>
+                                </div>
+                              );
+                            }
+                            if (pregunta && pregunta.tipo === 'seleccion-multiple' && Array.isArray(val.valor) && val.valor.length > 0) {
+                              return (
+                                <div key={val.campoId} style={{ marginTop: '6px', borderTop: '1px dashed #e2e8f0', paddingTop: '4px' }}>
+                                  <p style={{ margin: 0, fontSize: '11px', fontWeight: 500, color: '#475569' }}>{pregunta.texto}:</p>
+                                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>{val.valor.join(', ')}</p>
                                 </div>
                               );
                             }

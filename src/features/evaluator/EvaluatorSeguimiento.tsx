@@ -150,6 +150,8 @@ export function EvaluatorSeguimiento() {
             : '';
       } else if (p.tipo === 'archivo') {
         dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
+      } else if (p.tipo === 'seleccion-multiple') {
+        dataToInject[tag] = Array.isArray(val) ? val.join(', ') : '';
       } else {
         dataToInject[tag] = val || '';
       }

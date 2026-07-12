@@ -29,6 +29,7 @@ export function AdminDashboard() {
   const { documentos, asignaciones, editarDocumento } = useCeishStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DocumentoEstado>('all');
+  const [groupFilter, setGroupFilter] = useState<'all' | 'en-curso' | 'finalizados' | 'rechazados'>('all');
 
   // CEISH editing modal state
   const [editingDoc, setEditingDoc] = useState<Documento | null>(null);
@@ -146,8 +147,14 @@ export function AdminDashboard() {
       evaluatorName.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || doc.estado === statusFilter;
-    
-    return matchesSearch && matchesStatus;
+
+    const matchesGroup =
+      groupFilter === 'all' ? true :
+      groupFilter === 'en-curso' ? ['creada', 'estratificacion', 'revision-tecnica'].includes(doc.estado) :
+      groupFilter === 'finalizados' ? doc.estado === 'aprobada' :
+      doc.estado === 'anulada'; // rechazados
+
+    return matchesSearch && matchesStatus && matchesGroup;
   });
 
   return (
@@ -276,6 +283,34 @@ export function AdminDashboard() {
                   <option value="anulada">Anulada / Suspendida</option>
                 </select>
               </div>
+            </div>
+
+            {/* Filtro agrupado rápido */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {([
+                ['all', `Todos (${documentos.length})`],
+                ['en-curso', `En Curso (${documentos.filter(d => ['creada', 'estratificacion', 'revision-tecnica'].includes(d.estado)).length})`],
+                ['finalizados', `Finalizados (${documentos.filter(d => d.estado === 'aprobada').length})`],
+                ['rechazados', `Rechazados (${documentos.filter(d => d.estado === 'anulada').length})`],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setGroupFilter(key)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '16px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: groupFilter === key ? '1px solid var(--c-primary-border)' : '1px solid var(--c-border)',
+                    background: groupFilter === key ? 'var(--c-primary-light)' : 'white',
+                    color: groupFilter === key ? 'var(--c-primary)' : 'var(--c-text-muted)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             {/* Tabla de Proyectos */}

@@ -361,6 +361,17 @@ export const ceishService = {
     return { documento: mapDocumento(data.documento), notificaciones: data.notificaciones.map(mapNotificacion) };
   },
 
+  async elevarRiesgo(
+    documentoId: string, evaluadorId: string, evaluadorNombre: string,
+    nuevoRiesgoConfirmado: RiesgoTipo, justificacion: string,
+  ): Promise<{ documento: Documento; notificaciones: Notificacion[] }> {
+    const data = await apiSend<{ documento: DocumentoDTO; notificaciones: NotificacionDTO[] }>(
+      'POST', `/api/ceish/documentos/${documentoId}/elevar-riesgo`,
+      { evaluadorId, evaluadorNombre, nuevoRiesgoConfirmado, justificacion },
+    );
+    return { documento: mapDocumento(data.documento), notificaciones: data.notificaciones.map(mapNotificacion) };
+  },
+
   // Asignaciones
   async getAsignaciones(): Promise<AsignacionCEISH[]> {
     const data = await apiGet<AsignacionDTO[]>('/api/ceish/asignaciones');

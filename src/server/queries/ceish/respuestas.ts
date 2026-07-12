@@ -6,6 +6,7 @@ import type {
   Pregunta, ValorCampo, ComentarioAnotacion, RespuestaAnexo, RiesgoTipo, DocumentoEstado,
 } from '../../../shared/types/platform.types';
 import type { DocumentoRow } from './documentos';
+import { evaluadoresDisponibles } from './documentos';
 import { insertNotificaciones } from './notificaciones';
 import type { NotificacionEvento, NotificacionRow } from './notificaciones';
 
@@ -111,9 +112,16 @@ export async function emitirAnexo(input: EmitirAnexoInput): Promise<EmitirAnexoR
     if (!doc) throw new Error('Documento no encontrado.');
 
     const timestamp = new Date().toISOString();
-    const cronometro = input.nuevoEstado === 'aprobada'
+    const cronometroBase = input.nuevoEstado === 'aprobada'
       ? { fechaAprobacion: timestamp, diasEjecucion: 365 }
       : doc.cronometro;
+
+    // Igual que el mapeo por id literal de 'anexo-27' de abajo (limitación consciente
+    // del prototipo): al "No Aprobar" el Anexo 12 se estampa un plazo de 30 días para
+    // que el investigador corrija. Se evalúa al vuelo en la UI, no dispara nada solo.
+    const cronometro = input.anexoTemplateId === 'anexo-12' && input.resultado === 'con-observaciones'
+      ? { ...cronometroBase, fechaLimiteCorreccion: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() }
+      : cronometroBase;
 
     // COMENTARIO DE CONTROL DE ARQUITECTURA (limitación consciente del prototipo,
     // igual que en el store en memoria): el disparador de 'anexo-27' está mapeado
@@ -199,6 +207,14 @@ export async function darseDeBajaRevisor(
     const timestamp = new Date().toISOString();
     const latestVersionId = doc.versiones_archivo[doc.versiones_archivo.length - 1]?.id ?? '';
 
+    // La reasignación debe quedarse en la MISMA etapa/sección del evaluador que
+    // se inhibe — una recusación no es un avance de trámite.
+    const asigActualRes = await client.query<{ seccion_id: string }>(
+      `SELECT seccion_id FROM ceish_asignaciones WHERE documento_id = $1 AND evaluador_id = $2 AND active = TRUE`,
+      [documentoId, evaluadorId],
+    );
+    const seccionIdActual = asigActualRes.rows[0]?.seccion_id ?? 'sec-estratificacion';
+
     const respuesta = await upsertRespuesta(client, {
       documentoId,
       anexoTemplateId: 'anexo-23',
@@ -242,16 +258,109 @@ export async function darseDeBajaRevisor(
       const nuevoEvaluador = disponibles[Math.floor(Math.random() * disponibles.length)];
       await client.query(
         `INSERT INTO ceish_asignaciones (documento_id, seccion_id, evaluador_id, active, assigned_at)
-         VALUES ($1,'sec-evaluacion',$2,TRUE,$3)`,
-        [documentoId, nuevoEvaluador.id, timestamp],
+         VALUES ($1,$4,$2,TRUE,$3)`,
+        [documentoId, nuevoEvaluador.id, timestamp, seccionIdActual],
       );
-      comentarioHistorial += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name} para la siguiente etapa.`;
+      comentarioHistorial += ` Reasignado automáticamente al revisor: ${nuevoEvaluador.name} para continuar la misma etapa.`;
       eventos.push({
         destinatarioId: nuevoEvaluador.id,
         mensaje: `Se te ha asignado el proyecto ${doc.codigo} para evaluación técnica.`,
       });
     } else {
       comentarioHistorial += ' No existen más revisores disponibles en la plataforma.';
+    }
+
+    const historialEstados = [...doc.historial_estados, {
+      estado: doc.estado,
+      changedAt: timestamp,
+      changedBy: evaluadorNombre,
+      comment: comentarioHistorial,
+    }];
+
+    const updated = await client.query<DocumentoRow>(
+      `UPDATE ceish_documentos
+          SET miembros_ceish_declarados = $2::jsonb, historial_estados = $3::jsonb
+        WHERE id = $1
+        RETURNING ${DOC_COLUMNS}`,
+      [documentoId, JSON.stringify(exclusiones), JSON.stringify(historialEstados)],
+    );
+
+    const notificaciones = await insertNotificaciones(client, eventos);
+    return { documento: updated.rows[0], notificaciones };
+  });
+}
+
+// ── Elevar riesgo en Estratificación → Revisión Técnica con 2 evaluadores ──
+export interface ElevarRiesgoResult {
+  documento: DocumentoRow;
+  notificaciones: NotificacionRow[];
+}
+
+export async function elevarRiesgoTecnica(
+  documentoId: string,
+  evaluadorId: string,
+  evaluadorNombre: string,
+  nuevoRiesgoConfirmado: RiesgoTipo,
+  justificacion: string,
+): Promise<ElevarRiesgoResult> {
+  return withTransaction(async (client) => {
+    const docRes = await client.query<DocumentoRow>(`SELECT ${DOC_COLUMNS} FROM ceish_documentos WHERE id = $1`, [documentoId]);
+    const doc = docRes.rows[0];
+    if (!doc) throw new Error('Documento no encontrado.');
+
+    const timestamp = new Date().toISOString();
+    const latestVersionId = doc.versiones_archivo[doc.versiones_archivo.length - 1]?.id ?? '';
+
+    await upsertRespuesta(client, {
+      documentoId,
+      anexoTemplateId: 'anexo-27',
+      seccionId: 'sec-estratificacion',
+      versionArchivoId: latestVersionId,
+      emitidoPorId: evaluadorId,
+      emitidoPorNombre: evaluadorNombre,
+      resultado: 'discrepa',
+      valores: [{ campoId: 'justificacion_riesgo', valor: justificacion }],
+      comentariosAnotados: [],
+    });
+
+    // Cierra la asignación de Estratificación y busca 2 evaluadores frescos para
+    // Revisión Técnica (excluyendo también al evaluador de Estratificación, para
+    // mantener ojos distintos entre etapas).
+    await client.query(
+      `UPDATE ceish_asignaciones SET active = FALSE WHERE documento_id = $1 AND active = TRUE`,
+      [documentoId],
+    );
+
+    const { disponibles, exclusiones } = await evaluadoresDisponibles(client, doc.autores, doc.miembros_ceish_declarados);
+    const candidatos = disponibles.filter((e) => e.id !== evaluadorId);
+    const elegidos: typeof candidatos = [];
+    const pool = [...candidatos];
+    while (elegidos.length < 2 && pool.length > 0) {
+      const idx = Math.floor(Math.random() * pool.length);
+      elegidos.push(pool[idx]);
+      pool.splice(idx, 1);
+    }
+
+    let comentarioHistorial = `Riesgo reclasificado a ${nuevoRiesgoConfirmado.replace('-', ' ')}. Proyecto pasa a Revisión Técnica.`;
+    const eventos: NotificacionEvento[] = [
+      { destinatarioId: doc.investigador_id, mensaje: `Tu proyecto ${doc.codigo} pasó a Revisión Técnica tras la estratificación de riesgo.` },
+    ];
+
+    if (elegidos.length > 0) {
+      for (const evaluador of elegidos) {
+        await client.query(
+          `INSERT INTO ceish_asignaciones (documento_id, seccion_id, evaluador_id, active, assigned_at)
+           VALUES ($1,'sec-evaluacion',$2,TRUE,$3)`,
+          [documentoId, evaluador.id, timestamp],
+        );
+        eventos.push({
+          destinatarioId: evaluador.id,
+          mensaje: `Se te ha asignado el proyecto ${doc.codigo} para evaluación técnica.`,
+        });
+      }
+      comentarioHistorial += ` Asignados ${elegidos.length} evaluador(es) para revisión técnica.`;
+    } else {
+      comentarioHistorial += ' No existen evaluadores disponibles en la plataforma.';
     }
 
     const historialEstados = [...doc.historial_estados, {
@@ -263,10 +372,10 @@ export async function darseDeBajaRevisor(
 
     const updated = await client.query<DocumentoRow>(
       `UPDATE ceish_documentos
-          SET estado = 'revision-tecnica', miembros_ceish_declarados = $2::jsonb, historial_estados = $3::jsonb
+          SET estado = 'revision-tecnica', riesgo_confirmado = $2, miembros_ceish_declarados = $3::jsonb, historial_estados = $4::jsonb
         WHERE id = $1
         RETURNING ${DOC_COLUMNS}`,
-      [documentoId, JSON.stringify(exclusiones), JSON.stringify(historialEstados)],
+      [documentoId, nuevoRiesgoConfirmado, JSON.stringify(Array.from(exclusiones)), JSON.stringify(historialEstados)],
     );
 
     const notificaciones = await insertNotificaciones(client, eventos);
