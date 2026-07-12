@@ -107,6 +107,14 @@ export function TipoDocumentoCRUD() {
   const handleRemoveAnexoFromSeccion = (secIdx: number, anIdx: number) => {
     const updated = [...secciones];
     updated[secIdx].anexos = updated[secIdx].anexos.filter((_, idx) => idx !== anIdx);
+
+    // Quitar referencias colgantes: un anexo que ya no está asignado en
+    // ninguna sección no puede seguir siendo prerequisito de otro.
+    const idsRestantes = new Set(updated.flatMap(s => s.anexos.map(a => a.anexoTemplateId)));
+    updated.forEach(s => s.anexos.forEach(a => {
+      if (a.requiereAnexoIds) a.requiereAnexoIds = a.requiereAnexoIds.filter(id => idsRestantes.has(id));
+    }));
+
     setSecciones(updated);
   };
 
@@ -115,6 +123,35 @@ export function TipoDocumentoCRUD() {
     updated[secIdx].anexos[anIdx] = {
       ...updated[secIdx].anexos[anIdx],
       [field]: value
+    };
+    // Si se cambia a qué plantilla apunta esta fila, las dependencias declaradas
+    // para la plantilla anterior ya no tienen sentido.
+    if (field === 'anexoTemplateId') {
+      updated[secIdx].anexos[anIdx].requiereAnexoIds = [];
+    }
+    setSecciones(updated);
+  };
+
+  // Todos los anexos ya asignados en cualquier sección del formulario (excluyendo
+  // la fila actual), candidatos a marcarse como prerequisito de esa fila.
+  const getOtrosAnexosAsignados = (excludeSecIdx: number, excludeAnIdx: number) => {
+    const ids = new Set<string>();
+    secciones.forEach((s, sIdx) => s.anexos.forEach((a, aIdx) => {
+      if (sIdx === excludeSecIdx && aIdx === excludeAnIdx) return;
+      ids.add(a.anexoTemplateId);
+    }));
+    return Array.from(ids)
+      .map(id => anexosTemplates.find(t => t.id === id))
+      .filter((t): t is NonNullable<typeof t> => !!t);
+  };
+
+  const handleAnexoRequiereChange = (secIdx: number, anIdx: number, targetId: string, checked: boolean) => {
+    const updated = [...secciones];
+    const anexo = updated[secIdx].anexos[anIdx];
+    const actuales = anexo.requiereAnexoIds ?? [];
+    updated[secIdx].anexos[anIdx] = {
+      ...anexo,
+      requiereAnexoIds: checked ? [...actuales, targetId] : actuales.filter(id => id !== targetId),
     };
     setSecciones(updated);
   };
@@ -291,38 +328,59 @@ export function TipoDocumentoCRUD() {
                         {seccion.anexos.length === 0 ? (
                           <div className="anexos-empty">Ningún anexo asociado a esta etapa. Debes asociar al menos uno.</div>
                         ) : (
-                          seccion.anexos.map((anexo, anIdx) => (
-                            <div key={anIdx} className="assigned-anexo-row">
-                              <select 
-                                className="form-input"
-                                value={anexo.anexoTemplateId}
-                                onChange={(e) => handleAnexoChange(secIdx, anIdx, 'anexoTemplateId', e.target.value)}
-                              >
-                                {anexosTemplates.map(t => (
-                                  <option key={t.id} value={t.id}>
-                                    Anexo {t.numero} - {t.nombre} ({t.rol === 'investigador' ? 'Investigador' : 'Evaluador'})
-                                  </option>
-                                ))}
-                              </select>
+                          seccion.anexos.map((anexo, anIdx) => {
+                            const otrosAnexos = getOtrosAnexosAsignados(secIdx, anIdx);
+                            return (
+                            <div key={anIdx} className="assigned-anexo-row-wrapper">
+                              <div className="assigned-anexo-row">
+                                <select
+                                  className="form-input"
+                                  value={anexo.anexoTemplateId}
+                                  onChange={(e) => handleAnexoChange(secIdx, anIdx, 'anexoTemplateId', e.target.value)}
+                                >
+                                  {anexosTemplates.map(t => (
+                                    <option key={t.id} value={t.id}>
+                                      Anexo {t.numero} - {t.nombre} ({t.rol === 'investigador' ? 'Investigador' : 'Evaluador'})
+                                    </option>
+                                  ))}
+                                </select>
 
-                              <label className="checkbox-label">
-                                <input 
-                                  type="checkbox" 
-                                  checked={anexo.obligatorio}
-                                  onChange={(e) => handleAnexoChange(secIdx, anIdx, 'obligatorio', e.target.checked)}
-                                />
-                                <span>Obligatorio</span>
-                              </label>
+                                <label className="checkbox-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={anexo.obligatorio}
+                                    onChange={(e) => handleAnexoChange(secIdx, anIdx, 'obligatorio', e.target.checked)}
+                                  />
+                                  <span>Obligatorio</span>
+                                </label>
 
-                              <button 
-                                type="button" 
-                                className="order-btn order-btn--danger"
-                                onClick={() => handleRemoveAnexoFromSeccion(secIdx, anIdx)}
-                              >
-                                ✕
-                              </button>
+                                <button
+                                  type="button"
+                                  className="order-btn order-btn--danger"
+                                  onClick={() => handleRemoveAnexoFromSeccion(secIdx, anIdx)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              {otrosAnexos.length > 0 && (
+                                <div className="anexo-requisitos" style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
+                                  <span>Depende de:</span>
+                                  {otrosAnexos.map(t => (
+                                    <label key={t.id} className="checkbox-label" style={{ marginLeft: '4px' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={(anexo.requiereAnexoIds ?? []).includes(t.id)}
+                                        onChange={(e) => handleAnexoRequiereChange(secIdx, anIdx, t.id, e.target.checked)}
+                                      />
+                                      <span>Anexo {t.numero}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     </div>

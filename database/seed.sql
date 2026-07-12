@@ -185,8 +185,8 @@ INSERT INTO ceish_tipos_documento (id, nombre, secciones) VALUES
       "orden": 2,
       "anexos": [
         {"anexoTemplateId": "anexo-27", "obligatorio": true},
-        {"anexoTemplateId": "anexo-11", "obligatorio": true},
-        {"anexoTemplateId": "anexo-23", "obligatorio": false}
+        {"anexoTemplateId": "anexo-11", "obligatorio": true, "requiereAnexoIds": ["anexo-27"]},
+        {"anexoTemplateId": "anexo-23", "obligatorio": false, "requiereAnexoIds": ["anexo-11"]}
       ]
     },
     {
@@ -195,7 +195,7 @@ INSERT INTO ceish_tipos_documento (id, nombre, secciones) VALUES
       "orden": 3,
       "anexos": [
         {"anexoTemplateId": "anexo-12", "obligatorio": true},
-        {"anexoTemplateId": "anexo-13", "obligatorio": true},
+        {"anexoTemplateId": "anexo-13", "obligatorio": true, "requiereAnexoIds": ["anexo-12"]},
         {"anexoTemplateId": "anexo-26", "obligatorio": false}
       ]
     }

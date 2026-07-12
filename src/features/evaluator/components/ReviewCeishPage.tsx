@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../store/authStore';
 import { useCeishStore } from '../../../store/ceishStore';
 import { ceishService } from '../../../services/ceishService';
+import { resolverDependenciasAnexo } from '../../../shared/utils/anexoDependencies';
 import { usePDFViewer } from '../../evaluation/hooks/usePDFViewer';
 import { PDFViewer } from '../../evaluation/components/PDFViewer/PDFViewer';
-import { generateDocx } from '../../../utils/docxGenerator';
-import type { 
+import type {
   ValorCampo, 
   ComentarioAnotacion,
   RiesgoTipo
@@ -203,6 +203,9 @@ export function ReviewCeishPage() {
     return false;
   }) || tipoDoc.secciones[1]; // Fallback a la segunda sección por seguridad
 
+  const requisitosAnexo = (anexoTemplateId: string) =>
+    resolverDependenciasAnexo(anexoTemplateId, tipoDoc.secciones.flatMap(s => s.anexos), respuestasAnexos, documento.id, latestVersion?.id);
+
   // Autoseleccionar el primer anexo asignado a la sección
   if (!activeAnexoId && activeSeccion && activeSeccion.anexos.length > 0) {
     setActiveAnexoId(activeSeccion.anexos[0].anexoTemplateId);
@@ -359,152 +362,6 @@ export function ReviewCeishPage() {
     navigate('/evaluador');
   };
 
-  // ============================================================================
-  // RELLENO DE PLANTILLAS WORD (docxtemplater)
-  // ============================================================================
-  const handleDownloadWordTemplate = async (anexoId: string) => {
-    const template = anexosTemplates.find(t => t.id === anexoId);
-    if (!template) return;
-    if (!template.wordTemplateObjectKey) {
-      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
-      return;
-    }
-
-    const dataToInject: Record<string, any> = {
-      codigo: documento?.codigo || '',
-      tema: documento?.tema || '',
-      nombre_evaluador: currentUser.name,
-      fecha: new Date().toLocaleDateString('es-ES'),
-      resultado: 'Evaluación Técnica Realizada',
-      observaciones: 'Sin observaciones específicas en el acta.',
-    };
-
-    template.preguntas.forEach(p => {
-      const val = respuestasForm[p.id];
-      const tag = p.key || `tag_${p.orden}`;
-      if (p.tipo === 'checklist') {
-        dataToInject[tag] = val ? 'SÍ' : '';
-      } else if (p.tipo === 'si-no') {
-        dataToInject[tag] = (val === 'SI' || val === true || val === 'true') ? 'SÍ' : (val === 'NO' || val === false || val === 'false') ? 'NO' : '';
-      } else if (p.tipo === 'archivo') {
-        dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
-      } else {
-        dataToInject[tag] = val || '';
-        if (tag === 'observaciones') {
-          dataToInject.observaciones = val || '';
-        }
-      }
-    });
-
-    const fileName = `Anexo_${template.numero}_${documento?.codigo || 'CEISH'}`;
-    try {
-      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
-      generateDocx(bytes, dataToInject, fileName);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
-    }
-  };
-
-  const handleDownloadConflictoWord = async () => {
-    const template = anexosTemplates.find(t => t.id === 'anexo-23');
-    if (!template) return;
-    if (!template.wordTemplateObjectKey) {
-      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
-      return;
-    }
-
-    const dataToInject = {
-      codigo: documento?.codigo || '',
-      tema: documento?.tema || '',
-      nombre_evaluador: currentUser.name,
-      fecha: new Date().toLocaleDateString('es-ES'),
-      resultado: 'Inhibición por Conflicto',
-      observaciones: conflictoComentario.trim(),
-      declaracion_inhibicion: conflictoDeclaracion ? 'DECLARO CONFLICTO E INHIBICION' : 'NO DECLARADO'
-    };
-
-    const fileName = `Anexo_23_Conflicto_${documento?.codigo || 'CEISH'}`;
-    try {
-      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
-      generateDocx(bytes, dataToInject, fileName);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
-    }
-  };
-
-  const handleDownloadBajaWord = async () => {
-    const template = anexosTemplates.find(t => t.id === 'anexo-26');
-    if (!template) return;
-    if (!template.wordTemplateObjectKey) {
-      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
-      return;
-    }
-
-    const dataToInject = {
-      codigo: documento?.codigo || '',
-      tema: documento?.tema || '',
-      nombre_evaluador: currentUser.name,
-      fecha: new Date().toLocaleDateString('es-ES'),
-      resultado: 'Baja Definitiva del Trámite',
-      observaciones: bajaMotivo.trim(),
-      declaracion_suspension: bajaDeclaracion ? 'SUSPENSION CONFIRMADA Y FIRMADA' : 'NO CONFIRMADA'
-    };
-
-    const fileName = `Anexo_26_Baja_${documento?.codigo || 'CEISH'}`;
-    try {
-      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
-      generateDocx(bytes, dataToInject, fileName);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
-    }
-  };
-
-  const handleDownloadStudentWordTemplate = async (anexoId: string) => {
-    const template = anexosTemplates.find(t => t.id === anexoId);
-    if (!template) return;
-    if (!template.wordTemplateObjectKey) {
-      alert("Este anexo no tiene una plantilla de Word oficial asociada en el sistema.");
-      return;
-    }
-
-    const resp = respuestasAnexos.find(
-      r => r.documentoId === documento?.id && r.anexoTemplateId === anexoId && r.versionArchivoId === latestVersion?.id
-    );
-
-    const dataToInject: Record<string, any> = {
-      codigo: documento?.codigo || '',
-      tema: documento?.tema || '',
-      nombre_evaluador: 'Evaluador CEISH',
-      fecha: new Date().toLocaleDateString('es-ES'),
-      resultado: 'Solicitado',
-      observaciones: 'Sin observaciones.',
-    };
-
-    template.preguntas.forEach(p => {
-      const savedVal = resp?.valores.find(v => v.campoId === p.id);
-      const val = savedVal ? savedVal.valor : '';
-      const tag = p.key || `tag_${p.orden}`;
-      
-      if (p.tipo === 'checklist') {
-        dataToInject[tag] = val ? 'SÍ' : '';
-      } else if (p.tipo === 'si-no') {
-        dataToInject[tag] = (val === 'SI' || val === true || val === 'true') ? 'SÍ' : (val === 'NO' || val === false || val === 'false') ? 'NO' : '';
-      } else if (p.tipo === 'archivo') {
-        dataToInject[tag] = val ? `Archivo adjunto: ${val.documentName}` : 'Sin archivo adjunto';
-      } else {
-        dataToInject[tag] = val || '';
-      }
-    });
-
-    const fileName = `Anexo_${template.numero}_${documento?.codigo || 'CEISH'}`;
-    try {
-      const bytes = await ceishService.fetchFileBytes(template.wordTemplateObjectKey);
-      generateDocx(bytes, dataToInject, fileName);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error al descargar la plantilla de Word.');
-    }
-  };
-
   const handleDarDeBajaConfirm = async () => {
     if (!bajaMotivo.trim()) {
       return alert('Debe especificar la causa de la baja definitiva.');
@@ -556,8 +413,8 @@ export function ReviewCeishPage() {
 
   // ACCIÓN 3.5: Inhibición Directa desde Pestaña Anexo 23
   const isAnexo23Valido = () => {
-    // 1. Debe cumplirse la condición del Anexo 11 (que requiere el Anexo 27 completo y el texto del Anexo 11 lleno)
-    if (!isAnexo11Valido()) return false;
+    // 1. Deben estar respondidos los anexos previos configurados como requisito (p. ej. Anexo 11)
+    if (!requisitosAnexo('anexo-23').desbloqueado) return false;
 
     // 2. Debe detallarse la causa del conflicto (campos 'texto-libre' de Anexo 23)
     const template23 = anexosTemplates.find(t => t.id === 'anexo-23');
@@ -598,11 +455,8 @@ export function ReviewCeishPage() {
 
   // ACCIÓN 1.5: Finalizar Exención Ética (Anexo 11)
   const isAnexo11Valido = () => {
-    // 1. Debe completarse el llenado/emisión del anexo 27 (estratificación)
-    const anexo27Completado = respuestasAnexos.some(
-      r => r.documentoId === documento.id && r.anexoTemplateId === 'anexo-27' && r.versionArchivoId === latestVersion?.id
-    );
-    if (!anexo27Completado) return false;
+    // 1. Deben estar respondidos los anexos previos configurados como requisito (p. ej. Anexo 27)
+    if (!requisitosAnexo('anexo-11').desbloqueado) return false;
 
     // 2. Deben llenarse los campos obligatorios (únicamente 'texto-libre') de la plantilla actual de Anexo 11
     const template11 = anexosTemplates.find(t => t.id === 'anexo-11');
@@ -731,6 +585,8 @@ export function ReviewCeishPage() {
 
   // ACCIÓN A: Aprobar Metodológicamente (Emisión de Anexo 12, redirige a Anexo 13)
   const isAnexo12Valido = () => {
+    if (!requisitosAnexo('anexo-12').desbloqueado) return false;
+
     const template12 = anexosTemplates.find(t => t.id === 'anexo-12');
     if (!template12) return false;
 
@@ -786,13 +642,16 @@ export function ReviewCeishPage() {
 
   // Validaciones y triggers para Anexo 13 y Anexo 26
   const isAnexo13Valido = () => {
-    // 1. Debe completarse el Anexo 12 (evaluación técnica aprobada)
-    const anexo12Completado = respuestasAnexos.some(
+    // 1. Deben estar respondidos los anexos previos configurados como requisito (p. ej. Anexo 12)
+    if (!requisitosAnexo('anexo-13').desbloqueado) return false;
+
+    // 2. Regla de negocio específica: el Anexo 12 debe estar además APROBADO (no solo respondido)
+    const anexo12Aprobado = respuestasAnexos.some(
       r => r.documentoId === documento.id && r.anexoTemplateId === 'anexo-12' && r.resultado === 'aprobado' && r.versionArchivoId === latestVersion?.id
     );
-    if (!anexo12Completado) return false;
+    if (!anexo12Aprobado) return false;
 
-    // 2. Deben llenarse los campos obligatorios (únicamente 'texto-libre') del Anexo 13
+    // 3. Deben llenarse los campos obligatorios (únicamente 'texto-libre') del Anexo 13
     const template13 = anexosTemplates.find(t => t.id === 'anexo-13');
     if (!template13) return false;
 
@@ -849,6 +708,8 @@ export function ReviewCeishPage() {
   };
 
   const isAnexo26Valido = () => {
+    if (!requisitosAnexo('anexo-26').desbloqueado) return false;
+
     const template26 = anexosTemplates.find(t => t.id === 'anexo-26');
     if (!template26) return false;
 
@@ -1107,16 +968,6 @@ export function ReviewCeishPage() {
                       <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#1e293b', flex: 1 }}>
                         Anexo {template.numero}: {template.nombre}
                       </h4>
-                      {template.wordTemplateObjectKey && (
-                        <button
-                          type="button"
-                          className="eval-btn eval-btn--sm eval-btn--primary"
-                          onClick={() => handleDownloadWordTemplate(template.id)}
-                          style={{ fontSize: '11px', padding: '4px 8px', marginLeft: '10px' }}
-                        >
-                          📥 Descargar Acta Word
-                        </button>
-                      )}
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -1586,17 +1437,9 @@ export function ReviewCeishPage() {
             </div>
             <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="eval-btn eval-btn--outline" onClick={() => setShowConflictoModal(false)}>Cancelar</button>
-              <button 
-                type="button"
-                className="eval-btn eval-btn--primary" 
-                onClick={handleDownloadConflictoWord}
-                disabled={!conflictoComentario.trim()}
-              >
-                📥 Descargar A23 Word
-              </button>
-              <button 
-                className="eval-btn eval-btn--danger" 
-                onClick={handleDeclararConflicto} 
+              <button
+                className="eval-btn eval-btn--danger"
+                onClick={handleDeclararConflicto}
                 disabled={!conflictoComentario.trim() || !conflictoDeclaracion}
               >
                 Confirmar Inhibición
@@ -1644,17 +1487,9 @@ export function ReviewCeishPage() {
             </div>
             <div className="modal__footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button className="eval-btn eval-btn--outline" onClick={() => setShowBajaModal(false)}>Cancelar</button>
-              <button 
-                type="button" 
-                className="eval-btn eval-btn--primary"
-                onClick={handleDownloadBajaWord}
-                disabled={!bajaMotivo.trim()}
-              >
-                📥 Descargar A26 Word
-              </button>
-              <button 
-                className="eval-btn eval-btn--danger" 
-                onClick={handleDarDeBajaConfirm} 
+              <button
+                className="eval-btn eval-btn--danger"
+                onClick={handleDarDeBajaConfirm}
                 disabled={!bajaMotivo.trim() || !bajaDeclaracion}
               >
                 Confirmar Baja (A26)
@@ -1843,17 +1678,6 @@ export function ReviewCeishPage() {
                       </h4>
                       
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        {template.wordTemplateObjectKey && !isEditingInvestigadorAnexos && (
-                          <button
-                            type="button"
-                            className="eval-btn eval-btn--sm eval-btn--primary"
-                            onClick={() => handleDownloadStudentWordTemplate(template.id)}
-                            style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px' }}
-                          >
-                            📥 Descargar Acta Word
-                          </button>
-                        )}
-                        
                         {!isEditingInvestigadorAnexos ? (
                           <button
                             type="button"

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { platformService } from '../../shared/services/platformService';
 import { useCeishStore } from '../../store/ceishStore';
 import type { User, StudentSubmission, Assignment, Documento, RiesgoTipo, DocumentoEstado } from '../../shared/types/platform.types';
@@ -19,7 +18,6 @@ const STATUS_CONFIG = {
 } as const;
 
 export function AdminDashboard() {
-  const navigate = useNavigate();
   const [rows, setRows] = useState<EvaluatorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
@@ -382,14 +380,6 @@ export function AdminDashboard() {
                         <div key={student.id} className="admin-student-row">
                           <span className="admin-student-row__name">{student.name}</span>
                           <span className={`badge ${status.cls}`}>{status.label}</span>
-                          {submission && (
-                            <button
-                              className="eval-btn eval-btn--sm eval-btn--outline"
-                              onClick={() => navigate(`/evaluador/revision/${submission.id}`)}
-                            >
-                              Abrir
-                            </button>
-                          )}
                         </div>
                       );
                     })}

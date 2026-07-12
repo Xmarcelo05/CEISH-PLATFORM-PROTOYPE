@@ -116,6 +116,11 @@ export interface AnexoTemplate {
 export interface AnexoAsignado {
   anexoTemplateId: string;
   obligatorio: boolean;
+  /** IDs directos de AnexoTemplate que deben tener una RespuestaAnexo
+   *  (borrador o emitida) para el mismo documento+versión antes de
+   *  habilitar este anexo. El resolver calcula la cadena transitiva —
+   *  el admin solo declara los prerequisitos directos. */
+  requiereAnexoIds?: string[];
 }
 
 export interface Seccion {

@@ -4,6 +4,7 @@ import { useCeishStore } from '../../store/ceishStore';
 import { ceishService } from '../../services/ceishService';
 import { CrearInvestigacionModal } from './components/CrearInvestigacionModal';
 import { generateDocx } from '../../utils/docxGenerator';
+import { resolverDependenciasAnexo } from '../../shared/utils/anexoDependencies';
 import type { ValorCampo } from '../../shared/types/platform.types';
 import './student.css';
 
@@ -515,17 +516,28 @@ export function SubmissionPage() {
                   {(() => {
                     const tipoDoc = tiposDocumento.find(t => t.id === selectedDoc.tipoDocumentoId);
                     const etapaCreacion = tipoDoc?.secciones[0];
-                    if (!etapaCreacion) return null;
+                    if (!etapaCreacion || !tipoDoc) return null;
+                    const todosAnexosTipo = tipoDoc.secciones.flatMap(s => s.anexos);
 
                     return etapaCreacion.anexos.map(an => {
                       const temp = anexosTemplates.find(t => t.id === an.anexoTemplateId);
                       if (!temp) return null;
                       const compl = isAnexoCompletado(temp.id);
+                      const { desbloqueado, faltantes } = resolverDependenciasAnexo(
+                        temp.id, todosAnexosTipo, respuestasAnexos, selectedDoc.id, latestVersion?.id,
+                      );
+                      const faltantesTxt = faltantes
+                        .map(id => anexosTemplates.find(t => t.id === id))
+                        .filter((t): t is NonNullable<typeof t> => !!t)
+                        .map(t => `Anexo ${t.numero}`)
+                        .join(', ');
 
                       return (
                         <button
                           key={temp.id}
-                          onClick={() => setActiveAnexoId(temp.id)}
+                          onClick={() => desbloqueado && setActiveAnexoId(temp.id)}
+                          disabled={!desbloqueado}
+                          title={desbloqueado ? undefined : `Debe completar primero: ${faltantesTxt}`}
                           style={{
                             padding: '6px 10px',
                             fontSize: '11px',
@@ -535,7 +547,8 @@ export function SubmissionPage() {
                             borderColor: activeAnexoId === temp.id ? '#2563eb' : '#cbd5e1',
                             background: activeAnexoId === temp.id ? '#eff6ff' : 'white',
                             color: activeAnexoId === temp.id ? '#2563eb' : '#334155',
-                            cursor: 'pointer',
+                            cursor: desbloqueado ? 'pointer' : 'not-allowed',
+                            opacity: desbloqueado ? 1 : 0.5,
                             whiteSpace: 'nowrap',
                             display: 'flex',
                             alignItems: 'center',
@@ -543,7 +556,7 @@ export function SubmissionPage() {
                           }}
                         >
                           Anexo {temp.numero}
-                          <span>{compl ? '✅' : '⏳'}</span>
+                          <span>{!desbloqueado ? '🔒' : compl ? '✅' : '⏳'}</span>
                         </button>
                       );
                     });

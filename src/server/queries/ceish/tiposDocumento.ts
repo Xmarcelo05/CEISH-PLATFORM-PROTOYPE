@@ -69,7 +69,11 @@ export async function stripAnexoFromAllTipos(anexoTemplateId: string, client?: P
   for (const tipo of tipos) {
     const nuevasSecciones = tipo.secciones.map((sec) => ({
       ...sec,
-      anexos: sec.anexos.filter((a) => a.anexoTemplateId !== anexoTemplateId),
+      anexos: sec.anexos
+        .filter((a) => a.anexoTemplateId !== anexoTemplateId)
+        .map((a) => a.requiereAnexoIds?.includes(anexoTemplateId)
+          ? { ...a, requiereAnexoIds: a.requiereAnexoIds.filter((id) => id !== anexoTemplateId) }
+          : a),
     }));
     if (JSON.stringify(nuevasSecciones) !== JSON.stringify(tipo.secciones)) {
       const updateSql = `UPDATE ceish_tipos_documento SET secciones = $2::jsonb WHERE id = $1`;
