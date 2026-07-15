@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useCeishStore } from '../../store/ceishStore';
-import { ceishFileCache } from '../../store/fileCache';
 import { generateDocx } from '../../utils/docxGenerator';
 import './evaluator.css';
 

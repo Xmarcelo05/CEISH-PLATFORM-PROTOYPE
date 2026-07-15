@@ -28,7 +28,7 @@ export function CrearInvestigacionModal({ onCancel, investigadorId, investigador
   const [descripcion, setDescripcion] = useState('');
   const [autores, setAutores] = useState<Autor[]>([]); 
   const [riesgo] = useState<'sin-riesgo' | 'riesgo-minimo' | 'riesgo-mayor'>('sin-riesgo');
-  const [conflictos, setConflictos] = useState<string[]>([]);
+  const [conflictos] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
 
