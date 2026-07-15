@@ -6,7 +6,17 @@
       "Bash(node _verify_riesgo3.mjs)",
       "Bash(node _verify_riesgo4.mjs)",
       "Bash(rm -f _verify_riesgo.mjs _verify_riesgo2.mjs _verify_riesgo3.mjs _verify_riesgo4.mjs _debug.mjs)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(node _verify_notif.mjs)",
+      "Bash(curl -s -X POST http://localhost:5173/api/ceish/respuestas/emitir -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>console.log\\(JSON.stringify\\(JSON.parse\\(d\\).notificaciones\\)\\)\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>console.log\\(JSON.stringify\\(JSON.parse\\(d\\).notificaciones, null, 2\\)\\)\\)\")",
+      "Bash(node _verify_seccion.mjs)",
+      "Bash(node _verify_version.mjs)",
+      "Bash(rm -f _verify_notif.mjs _verify_seccion.mjs _verify_version.mjs)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(docker compose *)"
     ]
   }
 }

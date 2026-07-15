@@ -234,8 +234,9 @@ export async function handleCeishRoute(
       valores: (b.valores as GuardarRespuestaInput['valores']) ?? [],
       comentariosAnotados: (b.comentariosAnotados as GuardarRespuestaInput['comentariosAnotados']) ?? [],
     };
+    const actorId = b.actorId ? String(b.actorId) : undefined;
     try {
-      sendJson(res, 200, await guardarRespuestaAnexo(input));
+      sendJson(res, 200, await guardarRespuestaAnexo(input, actorId));
     } catch (err) {
       sendJson(res, 400, { error: err instanceof Error ? err.message : 'Error al guardar la respuesta.' });
     }

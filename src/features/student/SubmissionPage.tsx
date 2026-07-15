@@ -38,13 +38,17 @@ export function SubmissionPage() {
   // Filtrar documentos del investigador
   const misDocumentos = documentos.filter((d) => d.investigadorId === currentUser.id);
   const selectedDoc = documentos.find((d) => d.id === selectedDocId);
-  const latestVersion = selectedDoc?.versionesArchivo.slice(-1)[0];
+  // Los Anexos 1-9 (Etapa 1) se llenan sobre la PRIMERA versión del archivo, sin importar
+  // cuántas correcciones de PDF se suban después (subirCorreccion agrega versiones nuevas
+  // para la etapa de revisión técnica, no para las respuestas de Etapa 1) — usar la última
+  // versión aquí desvincularía silenciosamente las respuestas ya guardadas del investigador.
+  const primeraVersionArchivo = selectedDoc?.versionesArchivo[0];
 
   // Cargar respuestas guardadas del anexo seleccionado en memoria local al cambiar de anexo o versión
   useEffect(() => {
-    if (selectedDoc && activeAnexoId && latestVersion) {
+    if (selectedDoc && activeAnexoId && primeraVersionArchivo) {
       const respGuardada = respuestasAnexos.find(
-        r => r.documentoId === selectedDoc.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === latestVersion.id
+        r => r.documentoId === selectedDoc.id && r.anexoTemplateId === activeAnexoId && r.versionArchivoId === primeraVersionArchivo.id
       );
 
       const iniciales: Record<string, any> = {};
@@ -68,7 +72,7 @@ export function SubmissionPage() {
       }
       setRespuestasForm(iniciales);
     }
-  }, [activeAnexoId, selectedDocId, latestVersion?.id, respuestasAnexos, anexosTemplates]);
+  }, [activeAnexoId, selectedDocId, primeraVersionArchivo?.id, respuestasAnexos, anexosTemplates]);
 
   const handleDownloadWordTemplate = async (anexoId: string) => {
     const template = anexosTemplates.find(t => t.id === anexoId);
@@ -113,9 +117,10 @@ export function SubmissionPage() {
     }
   };
 
-  // Autoseleccionar la primera pestaña de anexo al abrir un documento en borrador
+  // Autoseleccionar la primera pestaña de anexo al abrir un documento — los Anexos 1-9
+  // siguen editables mientras el trámite no esté cerrado (aprobada/anulada), no solo en 'creada'.
   useEffect(() => {
-    if (selectedDoc && selectedDoc.estado === 'creada') {
+    if (selectedDoc && selectedDoc.estado !== 'aprobada' && selectedDoc.estado !== 'anulada') {
       const tipoDoc = tiposDocumento.find(t => t.id === selectedDoc.tipoDocumentoId);
       const etapaCreacion = tipoDoc?.secciones[0];
       if (etapaCreacion && etapaCreacion.anexos.length > 0) {
@@ -143,7 +148,7 @@ export function SubmissionPage() {
   // Guardar respuestas de un anexo de Etapa 1
   const handleGuardarAnexo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDoc || !activeAnexoId || !latestVersion) return;
+    if (!selectedDoc || !activeAnexoId || !primeraVersionArchivo) return;
 
     const valores: ValorCampo[] = Object.keys(respuestasForm).map(key => ({
       campoId: key,
@@ -158,7 +163,7 @@ export function SubmissionPage() {
         anexoTemplateId: activeAnexoId,
         documentoId: selectedDoc.id,
         seccionId,
-        versionArchivoId: latestVersion.id,
+        versionArchivoId: primeraVersionArchivo.id,
         emitidoPorId: currentUser.id,
         emitidoPorNombre: currentUser.name,
         valores,
@@ -216,9 +221,9 @@ export function SubmissionPage() {
 
   // Verificar si un anexo ya fue guardado
   const isAnexoCompletado = (anexoId: string) => {
-    if (!selectedDoc || !latestVersion) return false;
+    if (!selectedDoc || !primeraVersionArchivo) return false;
     return respuestasAnexos.some(
-      r => r.documentoId === selectedDoc.id && r.anexoTemplateId === anexoId && r.versionArchivoId === latestVersion.id
+      r => r.documentoId === selectedDoc.id && r.anexoTemplateId === anexoId && r.versionArchivoId === primeraVersionArchivo.id
     );
   };
 
@@ -555,11 +560,14 @@ export function SubmissionPage() {
               </form>
             )}
 
-            {/* FASE 2: TAREA 2.2 - LLENADO DINÁMICO DE ANEXOS (ETAPA 1: CREACIÓN) */}
-            {selectedDoc.estado === 'creada' && (
+            {/* FASE 2: TAREA 2.2 - LLENADO DINÁMICO DE ANEXOS (ETAPA 1: CREACIÓN).
+                Sigue disponible más allá de 'creada' para poder corregir una respuesta ya
+                enviada mientras el trámite no esté cerrado (aprobada/anulada); el evaluador
+                activo recibe una notificación con el detalle de qué cambió. */}
+            {selectedDoc.estado !== 'aprobada' && selectedDoc.estado !== 'anulada' && (
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                 <p style={{ fontSize: '11px', color: '#64748b', margin: '0 0 8px 0', textTransform: 'uppercase', fontWeight: 600 }}>
-                  Fichas de Anexos Técnicos (Etapa 1)
+                  Fichas de Anexos Técnicos (Etapa 1){selectedDoc.estado !== 'creada' ? ' — Edición de respuesta ya enviada' : ''}
                 </p>
 
                 {/* Lista de pestañas de anexos configurados */}
@@ -575,7 +583,7 @@ export function SubmissionPage() {
                       if (!temp) return null;
                       const compl = isAnexoCompletado(temp.id);
                       const { desbloqueado, faltantes } = resolverDependenciasAnexo(
-                        temp.id, todosAnexosTipo, respuestasAnexos, selectedDoc.id, latestVersion?.id,
+                        temp.id, todosAnexosTipo, respuestasAnexos, selectedDoc.id, primeraVersionArchivo?.id,
                       );
                       const faltantesTxt = faltantes
                         .map(id => anexosTemplates.find(t => t.id === id))

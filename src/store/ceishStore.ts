@@ -88,7 +88,8 @@ interface CeishState {
   solicitarRevision: (documentoId: string, solicitanteNombre: string) => Promise<void>;
 
   guardarRespuestaAnexo: (
-    emision: Omit<RespuestaAnexo, 'id' | 'emitidoAt' | 'resultado' | 'snapshotPreguntas'>
+    emision: Omit<RespuestaAnexo, 'id' | 'emitidoAt' | 'resultado' | 'snapshotPreguntas'>,
+    actorId?: string
   ) => Promise<void>;
 
   emitirAnexo: (
@@ -300,8 +301,8 @@ export const useCeishStore = create<CeishState>()((set) => ({
         });
       },
 
-      guardarRespuestaAnexo: async (emision) => {
-        const nuevaResp = await ceishService.guardarRespuestaAnexo(emision);
+      guardarRespuestaAnexo: async (emision, actorId) => {
+        const { respuesta: nuevaResp, notificaciones } = await ceishService.guardarRespuestaAnexo(emision, actorId);
         set((state) => {
           const index = state.respuestasAnexos.findIndex(
             re => re.documentoId === nuevaResp.documentoId && re.anexoTemplateId === nuevaResp.anexoTemplateId && re.versionArchivoId === nuevaResp.versionArchivoId
@@ -309,7 +310,10 @@ export const useCeishStore = create<CeishState>()((set) => ({
           const nuevasRespuestas = [...state.respuestasAnexos];
           if (index !== -1) nuevasRespuestas[index] = nuevaResp;
           else nuevasRespuestas.push(nuevaResp);
-          return { respuestasAnexos: nuevasRespuestas };
+          return {
+            respuestasAnexos: nuevasRespuestas,
+            notificaciones: [...state.notificaciones, ...notificaciones],
+          };
         });
       },
 

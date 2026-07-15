@@ -394,9 +394,11 @@ export const ceishService = {
     emitidoPorNombre: string;
     valores: ValorCampo[];
     comentariosAnotados: ComentarioAnotacion[];
-  }): Promise<RespuestaAnexo> {
-    const data = await apiSend<RespuestaAnexoDTO>('PUT', '/api/ceish/respuestas', input);
-    return mapRespuestaAnexo(data);
+  }, actorId?: string): Promise<{ respuesta: RespuestaAnexo; notificaciones: Notificacion[] }> {
+    const data = await apiSend<{ respuesta: RespuestaAnexoDTO; notificaciones: NotificacionDTO[] }>(
+      'PUT', '/api/ceish/respuestas', { ...input, actorId },
+    );
+    return { respuesta: mapRespuestaAnexo(data.respuesta), notificaciones: data.notificaciones.map(mapNotificacion) };
   },
 
   async emitirAnexo(input: {

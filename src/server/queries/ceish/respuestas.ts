@@ -28,6 +28,59 @@ export interface RespuestaAnexoRow {
 const RESP_COLUMNS = `id, documento_id, anexo_template_id, seccion_id, version_archivo_id,
   emitido_por_id, emitido_por_nombre, emitido_at, resultado, valores, comentarios_anotados, snapshot_preguntas`;
 
+const RESULTADO_LABELS: Record<RespuestaAnexo['resultado'], string> = {
+  coincide: 'Coincide',
+  discrepa: 'Discrepa',
+  aprobado: 'Aprobado',
+  'con-observaciones': 'Con observaciones',
+  baja: 'Baja/Revocatoria',
+  'conflicto-interes': 'Conflicto de interés',
+};
+
+function formatValorNotificacion(valor: unknown): string {
+  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+  if (Array.isArray(valor)) return valor.length > 0 ? valor.join(', ') : '(vacío)';
+  if (valor && typeof valor === 'object' && 'documentName' in (valor as Record<string, unknown>)) {
+    return String((valor as { documentName: unknown }).documentName);
+  }
+  if (valor === undefined || valor === null || valor === '') return '(vacío)';
+  return String(valor);
+}
+
+/** Compara los valores de un anexo antes/después de sobrescribirlo y describe en texto
+ * plano qué pregunta cambió de valor (para notificar ediciones de respuestas ya enviadas). */
+function describirCambiosValores(preguntas: Pregunta[], valoresAntes: ValorCampo[], valoresDespues: ValorCampo[]): string[] {
+  const cambios: string[] = [];
+  valoresDespues.forEach((vd) => {
+    const va = valoresAntes.find((v) => v.campoId === vd.campoId);
+    const antes = va ? va.valor : undefined;
+    if (JSON.stringify(antes) !== JSON.stringify(vd.valor)) {
+      const pregunta = preguntas.find((p) => p.id === vd.campoId);
+      const etiqueta = pregunta ? pregunta.texto : vd.campoId;
+      cambios.push(`"${etiqueta}": ${formatValorNotificacion(antes)} → ${formatValorNotificacion(vd.valor)}`);
+    }
+  });
+  return cambios;
+}
+
+async function fetchRespuestaAnterior(
+  client: PoolClient, documentoId: string, anexoTemplateId: string, versionArchivoId: string,
+): Promise<RespuestaAnexoRow | null> {
+  const res = await client.query<RespuestaAnexoRow>(
+    `SELECT ${RESP_COLUMNS} FROM ceish_respuestas_anexo
+      WHERE documento_id = $1 AND anexo_template_id = $2 AND version_archivo_id = $3`,
+    [documentoId, anexoTemplateId, versionArchivoId],
+  );
+  return res.rows[0] ?? null;
+}
+
+async function fetchTemplateMeta(client: PoolClient, anexoTemplateId: string): Promise<{ numero: number; nombre: string }> {
+  const res = await client.query<{ numero: number; nombre: string }>(
+    `SELECT numero, nombre FROM ceish_anexo_templates WHERE id = $1`, [anexoTemplateId],
+  );
+  return res.rows[0] ?? { numero: 0, nombre: anexoTemplateId };
+}
+
 const DOC_COLUMNS = `id, codigo, tipo_documento_id, tema, descripcion, investigador_id, autores,
   riesgo_declarado, riesgo_confirmado, miembros_ceish_declarados, estado, versiones_archivo,
   historial_estados, cronometro, created_at`;
@@ -85,8 +138,50 @@ export interface GuardarRespuestaInput {
   comentariosAnotados: ComentarioAnotacion[];
 }
 
-export async function guardarRespuestaAnexo(input: GuardarRespuestaInput): Promise<RespuestaAnexoRow> {
-  return withTransaction((client) => upsertRespuesta(client, { ...input, resultado: 'coincide' }));
+export interface GuardarRespuestaResult { respuesta: RespuestaAnexoRow; notificaciones: NotificacionRow[] }
+
+export async function guardarRespuestaAnexo(input: GuardarRespuestaInput, actorId?: string): Promise<GuardarRespuestaResult> {
+  return withTransaction(async (client) => {
+    const anterior = await fetchRespuestaAnterior(client, input.documentoId, input.anexoTemplateId, input.versionArchivoId);
+    // Preserva el resultado ya existente (borrador u oficial) en vez de degradarlo siempre a
+    // 'coincide' — evita que un simple "Guardar Borrador" invalide una emisión oficial previa.
+    const respuesta = await upsertRespuesta(client, { ...input, resultado: anterior?.resultado ?? 'coincide' });
+
+    let notificaciones: NotificacionRow[] = [];
+    if (anterior) {
+      const cambios = describirCambiosValores(respuesta.snapshot_preguntas, anterior.valores, input.valores);
+      if (cambios.length > 0) {
+        const docRes = await client.query<{ investigador_id: string; codigo: string }>(
+          `SELECT investigador_id, codigo FROM ceish_documentos WHERE id = $1`, [input.documentoId],
+        );
+        const doc = docRes.rows[0];
+        if (doc) {
+          const { numero, nombre } = await fetchTemplateMeta(client, input.anexoTemplateId);
+          // El "actor" que realmente edita puede diferir de emitidoPorId (ej. el evaluador
+          // edita una respuesta del investigador conservando su autoría original).
+          const quienEdita = actorId || input.emitidoPorId;
+          const esInvestigadorQuienEdita = quienEdita === doc.investigador_id;
+
+          let destinatarios: string[];
+          if (esInvestigadorQuienEdita) {
+            const asigRes = await client.query<{ evaluador_id: string }>(
+              `SELECT evaluador_id FROM ceish_asignaciones WHERE documento_id = $1 AND active = TRUE`,
+              [input.documentoId],
+            );
+            destinatarios = asigRes.rows.map((a) => a.evaluador_id);
+          } else {
+            destinatarios = [doc.investigador_id];
+          }
+
+          const quien = esInvestigadorQuienEdita ? 'El investigador' : 'El evaluador';
+          const mensaje = `${quien} modificó la respuesta del Anexo ${numero} (${nombre}) en el proyecto ${doc.codigo}: ${cambios.join('; ')}.`;
+          notificaciones = await insertNotificaciones(client, destinatarios.map((destinatarioId) => ({ destinatarioId, mensaje })));
+        }
+      }
+    }
+
+    return { respuesta, notificaciones };
+  });
 }
 
 // ── Emitir anexo (máquina de estados del trámite) ───────────────────────
@@ -105,6 +200,9 @@ export interface EmitirAnexoResult {
 
 export async function emitirAnexo(input: EmitirAnexoInput): Promise<EmitirAnexoResult> {
   return withTransaction(async (client) => {
+    // Capturar la emisión oficial anterior (si existía) ANTES de sobrescribirla, para poder
+    // describir qué cambió si esto es una corrección de una respuesta ya enviada.
+    const anteriorEmision = await fetchRespuestaAnterior(client, input.documentoId, input.anexoTemplateId, input.versionArchivoId);
     const respuesta = await upsertRespuesta(client, input);
 
     const docRes = await client.query<DocumentoRow>(`SELECT ${DOC_COLUMNS} FROM ceish_documentos WHERE id = $1`, [input.documentoId]);
@@ -182,8 +280,30 @@ export async function emitirAnexo(input: EmitirAnexoInput): Promise<EmitirAnexoR
       });
     }
 
-    const notificaciones = await insertNotificaciones(client, eventos);
-    return { documento: updatedDoc.rows[0], respuesta, notificaciones };
+    const notificacionesEstado = await insertNotificaciones(client, eventos);
+
+    // Corrección de una emisión ya enviada: si ya existía una respuesta oficial previa para
+    // este anexo y algo cambió (resultado y/o valores), avisa al investigador con el detalle
+    // puntual. Se inserta aparte (no en `eventos`) para que no compita por el mismo
+    // destinatario con las notificaciones de cambio de etapa de arriba y las deduplique.
+    let notificacionesCorreccion: NotificacionRow[] = [];
+    if (anteriorEmision) {
+      const cambiosEmision: string[] = [];
+      if (anteriorEmision.resultado !== input.resultado) {
+        cambiosEmision.push(`resultado: ${RESULTADO_LABELS[anteriorEmision.resultado]} → ${RESULTADO_LABELS[input.resultado]}`);
+      }
+      cambiosEmision.push(...describirCambiosValores(respuesta.snapshot_preguntas, anteriorEmision.valores, input.valores));
+
+      if (cambiosEmision.length > 0) {
+        const { numero, nombre } = await fetchTemplateMeta(client, input.anexoTemplateId);
+        notificacionesCorreccion = await insertNotificaciones(client, [{
+          destinatarioId: doc.investigador_id,
+          mensaje: `El evaluador corrigió su emisión del Anexo ${numero} (${nombre}) en tu proyecto ${doc.codigo}: ${cambiosEmision.join('; ')}.`,
+        }]);
+      }
+    }
+
+    return { documento: updatedDoc.rows[0], respuesta, notificaciones: [...notificacionesEstado, ...notificacionesCorreccion] };
   });
 }
 
