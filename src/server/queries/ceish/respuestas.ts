@@ -6,7 +6,6 @@ import type {
   Pregunta, ValorCampo, ComentarioAnotacion, RespuestaAnexo, RiesgoTipo, DocumentoEstado,
 } from '../../../shared/types/platform.types';
 import type { DocumentoRow } from './documentos';
-import { evaluadoresDisponibles } from './documentos';
 import { insertNotificaciones } from './notificaciones';
 import type { NotificacionEvento, NotificacionRow } from './notificaciones';
 
@@ -410,95 +409,3 @@ export async function darseDeBajaRevisor(
   });
 }
 
-// ── Elevar riesgo en Estratificación → Revisión Técnica con 2 evaluadores ──
-export interface ElevarRiesgoResult {
-  documento: DocumentoRow;
-  notificaciones: NotificacionRow[];
-}
-
-export async function elevarRiesgoTecnica(
-  documentoId: string,
-  evaluadorId: string,
-  evaluadorNombre: string,
-  nuevoRiesgoConfirmado: RiesgoTipo,
-  justificacion: string,
-): Promise<ElevarRiesgoResult> {
-  return withTransaction(async (client) => {
-    const docRes = await client.query<DocumentoRow>(`SELECT ${DOC_COLUMNS} FROM ceish_documentos WHERE id = $1`, [documentoId]);
-    const doc = docRes.rows[0];
-    if (!doc) throw new Error('Documento no encontrado.');
-
-    const timestamp = new Date().toISOString();
-    const latestVersionId = doc.versiones_archivo[doc.versiones_archivo.length - 1]?.id ?? '';
-
-    await upsertRespuesta(client, {
-      documentoId,
-      anexoTemplateId: 'anexo-27',
-      seccionId: 'sec-estratificacion',
-      versionArchivoId: latestVersionId,
-      emitidoPorId: evaluadorId,
-      emitidoPorNombre: evaluadorNombre,
-      resultado: 'discrepa',
-      valores: [{ campoId: 'justificacion_riesgo', valor: justificacion }],
-      comentariosAnotados: [],
-    });
-
-    // Cierra la asignación de Estratificación y busca 2 evaluadores frescos para
-    // Revisión Técnica (excluyendo también al evaluador de Estratificación, para
-    // mantener ojos distintos entre etapas).
-    await client.query(
-      `UPDATE ceish_asignaciones SET active = FALSE WHERE documento_id = $1 AND active = TRUE`,
-      [documentoId],
-    );
-
-    const { disponibles, exclusiones } = await evaluadoresDisponibles(client, doc.autores, doc.miembros_ceish_declarados);
-    const candidatos = disponibles.filter((e) => e.id !== evaluadorId);
-    const elegidos: typeof candidatos = [];
-    const pool = [...candidatos];
-    while (elegidos.length < 2 && pool.length > 0) {
-      const idx = Math.floor(Math.random() * pool.length);
-      elegidos.push(pool[idx]);
-      pool.splice(idx, 1);
-    }
-
-    let comentarioHistorial = `Riesgo reclasificado a ${nuevoRiesgoConfirmado.replace('-', ' ')}. Proyecto pasa a Revisión Técnica.`;
-    const eventos: NotificacionEvento[] = [
-      { destinatarioId: doc.investigador_id, mensaje: `Tu proyecto ${doc.codigo} pasó a Revisión Técnica tras la estratificación de riesgo.` },
-    ];
-
-    if (elegidos.length > 0) {
-      for (const evaluador of elegidos) {
-        await client.query(
-          `INSERT INTO ceish_asignaciones (documento_id, seccion_id, evaluador_id, active, assigned_at)
-           VALUES ($1,'sec-evaluacion',$2,TRUE,$3)`,
-          [documentoId, evaluador.id, timestamp],
-        );
-        eventos.push({
-          destinatarioId: evaluador.id,
-          mensaje: `Se te ha asignado el proyecto ${doc.codigo} para evaluación técnica.`,
-        });
-      }
-      comentarioHistorial += ` Asignados ${elegidos.length} evaluador(es) para revisión técnica.`;
-    } else {
-      comentarioHistorial += ' No existen evaluadores disponibles en la plataforma.';
-    }
-
-    const historialEstados = [...doc.historial_estados, {
-      estado: 'revision-tecnica' as DocumentoEstado,
-      changedAt: timestamp,
-      changedBy: evaluadorNombre,
-      comment: comentarioHistorial,
-    }];
-
-    const updated = await client.query<DocumentoRow>(
-      `UPDATE ceish_documentos
-          SET estado = 'revision-tecnica', riesgo_confirmado = $2, miembros_ceish_declarados = $3::jsonb, historial_estados = $4::jsonb
-        WHERE id = $1
-        RETURNING ${DOC_COLUMNS}`,
-      [documentoId, nuevoRiesgoConfirmado, JSON.stringify(Array.from(exclusiones)), JSON.stringify(historialEstados)],
-    );
-
-    const notificaciones = await insertNotificaciones(client, eventos);
-    return { documento: updated.rows[0], notificaciones };
-  });
-}

@@ -7,9 +7,8 @@ import { resolverDependenciasAnexo } from '../../../shared/utils/anexoDependenci
 import { usePDFViewer } from '../../evaluation/hooks/usePDFViewer';
 import { PDFViewer } from '../../evaluation/components/PDFViewer/PDFViewer';
 import type {
-  ValorCampo, 
-  ComentarioAnotacion,
-  RiesgoTipo
+  ValorCampo,
+  ComentarioAnotacion
 } from '../../../shared/types/platform.types';
 import '../../evaluation/evaluation.css';
 import '../evaluator.css';
@@ -29,7 +28,6 @@ export function ReviewCeishPage() {
     emitirAnexo,
     guardarRespuestaAnexo,
     darseDeBajaRevisor,
-    elevarRiesgo,
     crearEscalamiento
   } = useCeishStore();
 
@@ -61,8 +59,6 @@ export function ReviewCeishPage() {
 
   const [showEscalarModal, setShowEscalarModal] = useState(false);
   const [escalamientoComentario, setEscalamientoComentario] = useState('');
-
-  const [nuevoRiesgoEleccion, setNuevoRiesgoEleccion] = useState<RiesgoTipo>('riesgo-minimo');
 
   // Modal de revisión de Anexos del Investigador
   const [showInvestigadorModal, setShowInvestigadorModal] = useState(false);
@@ -340,25 +336,6 @@ export function ReviewCeishPage() {
       setActiveAnexoId('anexo-11');
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Error al confirmar la estratificación.');
-    }
-  };
-
-  // ACCIÓN 2: Elevar Riesgo — pasa a Revisión Técnica con 2 evaluadores nuevos
-  const handleElevarRiesgo = async () => {
-    const justificacionText = respuestasForm[Object.keys(respuestasForm).slice(-1)[0]] || '';
-    if (!justificacionText.trim()) {
-      return alert('Debe detallar la justificación técnica de la reclasificación.');
-    }
-    if (!window.confirm(`¿Confirma reclasificar el riesgo a "${nuevoRiesgoEleccion.replace('-', ' ')}" y enviar el proyecto a Revisión Técnica con 2 evaluadores?`)) {
-      return;
-    }
-
-    try {
-      await elevarRiesgo(documento.id, currentUser.id, currentUser.name, nuevoRiesgoEleccion, justificacionText);
-      window.alert('Riesgo reclasificado. El proyecto pasó a Revisión Técnica con 2 evaluadores asignados.');
-      navigate('/evaluador');
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : 'Error al reclasificar el riesgo.');
     }
   };
 
@@ -1286,27 +1263,6 @@ export function ReviewCeishPage() {
                           >
                             Devolver para Correcciones
                           </button>
-                        </div>
-
-                        {/* Opción 3: Elevar Riesgo */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid #bfdbfe', paddingTop: '10px' }}>
-                          <select
-                            className="form-input"
-                            value={nuevoRiesgoEleccion}
-                            onChange={(e) => setNuevoRiesgoEleccion(e.target.value as RiesgoTipo)}
-                          >
-                            <option value="riesgo-minimo">Riesgo Mínimo</option>
-                            <option value="riesgo-mayor">Riesgo Mayor</option>
-                          </select>
-                          <button
-                            type="button"
-                            className="eval-btn"
-                            onClick={handleElevarRiesgo}
-                            style={{ width: '100%', backgroundColor: '#d97706', color: 'white' }}
-                          >
-                            Elevar Riesgo y Enviar a Revisión Técnica
-                          </button>
-                          <span style={{ fontSize: '10.5px', color: '#92400e' }}>⚠ Asigna 2 evaluadores nuevos para revisión técnica y saca al proyecto del camino corto de exención.</span>
                         </div>
                       </div>
                     )}

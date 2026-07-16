@@ -22,7 +22,19 @@
       "Bash(git fetch *)",
       "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\); console.log\\('estado:', r.documento.estado, '| historial length:', r.documento.historial_estados.length\\)}\\)\")",
       "Bash(node _verify_devuelto.mjs)",
-      "Bash(rm -f _verify_devuelto.mjs)"
+      "Bash(rm -f _verify_devuelto.mjs)",
+      "Bash(rm -f _verify_etapa2.mjs)",
+      "Bash(node _verify_flujos.mjs)",
+      "Bash(node _verify_drag.mjs)",
+      "Bash(node -e ' *)",
+      "Bash(rm -f _verify_flujos.mjs _verify_drag.mjs)",
+      "Bash(node _verify_misinvest.mjs)",
+      "Bash(rm -f _verify_misinvest.mjs)",
+      "Bash(node _verify_dropdown.mjs)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const docs=JSON.parse\\(d\\); console.log\\(docs.map\\(x=>\\({codigo:x.codigo, investigador_id:x.investigador_id, estado:x.estado}\\)\\)\\)}\\)\")",
+      "Bash(rm -f _verify_dropdown.mjs)",
+      "Bash(node _verify_marcartodas.mjs)",
+      "Bash(rm -f _verify_marcartodas.mjs)"
     ]
   }
 }

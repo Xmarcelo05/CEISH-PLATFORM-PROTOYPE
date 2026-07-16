@@ -107,14 +107,6 @@ interface CeishState {
     comentarioConflicto: string
   ) => Promise<void>;
 
-  elevarRiesgo: (
-    documentoId: string,
-    evaluadorId: string,
-    evaluadorNombre: string,
-    nuevoRiesgoConfirmado: RiesgoTipo,
-    justificacion: string
-  ) => Promise<void>;
-
   subirCorreccion: (
     documentoId: string,
     file: File,
@@ -124,6 +116,7 @@ interface CeishState {
 
   enviarNotificacionManual: (destinatarioIds: string[], mensaje: string) => Promise<void>;
   marcarNotificacionLeida: (id: string) => Promise<void>;
+  marcarTodasLeidas: (destinatarioId: string) => Promise<void>;
 
   crearEscalamiento: (
     documentoId: string,
@@ -370,23 +363,6 @@ export const useCeishStore = create<CeishState>()((set) => ({
         });
       },
 
-      elevarRiesgo: async (documentoId, evaluadorId, evaluadorNombre, nuevoRiesgoConfirmado, justificacion) => {
-        const { documento, notificaciones } = await ceishService.elevarRiesgo(
-          documentoId, evaluadorId, evaluadorNombre, nuevoRiesgoConfirmado, justificacion,
-        );
-        const asignaciones = await ceishService.getAsignaciones();
-        set((state) => {
-          const docIdx = state.documentos.findIndex(d => d.id === documentoId);
-          const nuevosDocs = [...state.documentos];
-          if (docIdx !== -1) nuevosDocs[docIdx] = documento;
-          return {
-            documentos: nuevosDocs,
-            asignaciones,
-            notificaciones: [...state.notificaciones, ...notificaciones],
-          };
-        });
-      },
-
       subirCorreccion: async (documentoId, file, investigadorNombre, comentario) => {
         const { documento } = await ceishService.subirCorreccion(documentoId, file, investigadorNombre, comentario);
         const asignaciones = await ceishService.getAsignaciones();
@@ -408,6 +384,13 @@ export const useCeishStore = create<CeishState>()((set) => ({
         const actualizada = await ceishService.marcarNotificacionLeida(id);
         set((state) => ({
           notificaciones: state.notificaciones.map(n => n.id === id ? actualizada : n)
+        }));
+      },
+
+      marcarTodasLeidas: async (destinatarioId) => {
+        await ceishService.marcarTodasLeidas(destinatarioId);
+        set((state) => ({
+          notificaciones: state.notificaciones.map(n => n.destinatarioId === destinatarioId ? { ...n, leida: true } : n)
         }));
       },
 

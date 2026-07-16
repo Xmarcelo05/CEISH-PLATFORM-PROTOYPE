@@ -24,11 +24,11 @@ import {
 } from './queries/ceish/documentos';
 import type { CrearDocumentoInput, EditarDocumentoInput } from './queries/ceish/documentos';
 import {
-  listRespuestasAnexo, guardarRespuestaAnexo, emitirAnexo, darseDeBajaRevisor, elevarRiesgoTecnica,
+  listRespuestasAnexo, guardarRespuestaAnexo, emitirAnexo, darseDeBajaRevisor,
 } from './queries/ceish/respuestas';
 import type { GuardarRespuestaInput, EmitirAnexoInput } from './queries/ceish/respuestas';
 import {
-  listNotificaciones, enviarNotificacionManual, marcarNotificacionLeida,
+  listNotificaciones, enviarNotificacionManual, marcarNotificacionLeida, marcarTodasLeidas,
 } from './queries/ceish/notificaciones';
 import {
   listEscalamientos, crearEscalamiento, resolverEscalamiento,
@@ -194,22 +194,6 @@ export async function handleCeishRoute(
     return true;
   }
 
-  // POST /api/ceish/documentos/:id/elevar-riesgo — Estratificación con riesgo -> Revisión Técnica (2 evaluadores)
-  const elevarRiesgoMatch = path.match(/^\/api\/ceish\/documentos\/([^/]+)\/elevar-riesgo$/);
-  if (elevarRiesgoMatch && method === 'POST') {
-    const b = await readJsonBody(req);
-    try {
-      const result = await elevarRiesgoTecnica(
-        elevarRiesgoMatch[1], String(b.evaluadorId ?? ''), String(b.evaluadorNombre ?? ''),
-        b.nuevoRiesgoConfirmado as 'riesgo-minimo' | 'riesgo-mayor', String(b.justificacion ?? ''),
-      );
-      sendJson(res, 200, result);
-    } catch (err) {
-      sendJson(res, 400, { error: err instanceof Error ? err.message : 'Error al elevar el riesgo del proyecto.' });
-    }
-    return true;
-  }
-
   // ── Asignaciones ───────────────────────────────────────────────────────────
   if (path === '/api/ceish/asignaciones' && method === 'GET') {
     sendJson(res, 200, await listAsignaciones());
@@ -276,6 +260,11 @@ export async function handleCeishRoute(
     const b = await readJsonBody(req);
     const destinatarioIds = (b.destinatarioIds as string[]) ?? [];
     sendJson(res, 201, await enviarNotificacionManual(destinatarioIds, String(b.mensaje ?? '')));
+    return true;
+  }
+  if (path === '/api/ceish/notificaciones/leidas-todas' && method === 'PATCH') {
+    const b = await readJsonBody(req);
+    sendJson(res, 200, await marcarTodasLeidas(String(b.destinatarioId ?? '')));
     return true;
   }
   const notifLeidaMatch = path.match(/^\/api\/ceish\/notificaciones\/([^/]+)\/leida$/);

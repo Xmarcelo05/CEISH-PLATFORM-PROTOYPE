@@ -70,3 +70,10 @@ export async function marcarNotificacionLeida(id: string): Promise<NotificacionR
   );
   return rows[0] ?? null;
 }
+
+export async function marcarTodasLeidas(destinatarioId: string): Promise<NotificacionRow[]> {
+  return query<NotificacionRow>(
+    `UPDATE ceish_notificaciones SET leida = TRUE WHERE destinatario_id = $1 AND leida = FALSE RETURNING ${COLUMNS}`,
+    [destinatarioId],
+  );
+}

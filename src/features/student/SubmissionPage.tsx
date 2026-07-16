@@ -5,8 +5,16 @@ import { ceishService } from '../../services/ceishService';
 import { CrearInvestigacionModal } from './components/CrearInvestigacionModal';
 import { generateDocx } from '../../utils/docxGenerator';
 import { resolverDependenciasAnexo } from '../../shared/utils/anexoDependencies';
-import type { ValorCampo, Documento } from '../../shared/types/platform.types';
+import type { ValorCampo, Documento, DocumentoEstado } from '../../shared/types/platform.types';
 import './student.css';
+
+const ETAPA_OPTIONS: { value: DocumentoEstado; label: string }[] = [
+  { value: 'creada', label: 'Borrador' },
+  { value: 'estratificacion', label: 'Etapa 2: Estratificación' },
+  { value: 'revision-tecnica', label: 'Etapa 3: Revisión Técnica' },
+  { value: 'aprobada', label: 'Aprobada' },
+  { value: 'anulada', label: 'Anulada' },
+];
 
 export function SubmissionPage() {
   const currentUser = useAuthStore((s) => s.currentUser)!;
@@ -23,7 +31,11 @@ export function SubmissionPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [filtroTab, setFiltroTab] = useState<'todos' | 'devueltos'>('todos');
+  const [filtroTab, setFiltroTab] = useState<'todos' | 'completadas' | 'canceladas' | 'devueltos'>('todos');
+  const [busqueda, setBusqueda] = useState('');
+  const [etapasFiltro, setEtapasFiltro] = useState<Set<DocumentoEstado>>(new Set());
+  const [soloConObservaciones, setSoloConObservaciones] = useState(false);
+  const [showEtapaDropdown, setShowEtapaDropdown] = useState(false);
 
   // Estados para el llenado dinámico de anexos en la Etapa 1
   const [activeAnexoId, setActiveAnexoId] = useState<string | null>(null);
@@ -282,7 +294,36 @@ export function SubmissionPage() {
     return false;
   };
 
-  const misDocumentosFiltrados = filtroTab === 'todos' ? misDocumentos : misDocumentos.filter(esDevuelto);
+  const handleToggleEtapaFiltro = (estado: DocumentoEstado) => {
+    setEtapasFiltro((prev) => {
+      const next = new Set(prev);
+      if (next.has(estado)) next.delete(estado); else next.add(estado);
+      return next;
+    });
+  };
+
+  const misCompletados = misDocumentos.filter((d) => d.estado === 'aprobada');
+  const misCancelados = misDocumentos.filter((d) => d.estado === 'anulada');
+  const misDevueltos = misDocumentos.filter(esDevuelto);
+
+  const misDocumentosFiltrados = (() => {
+    let base: Documento[];
+    if (filtroTab === 'completadas') base = misCompletados;
+    else if (filtroTab === 'canceladas') base = misCancelados;
+    else if (filtroTab === 'devueltos') base = misDevueltos;
+    else {
+      base = misDocumentos;
+      if (etapasFiltro.size > 0) base = base.filter((d) => etapasFiltro.has(d.estado));
+      if (soloConObservaciones) base = base.filter(esDevuelto);
+    }
+    if (busqueda.trim()) {
+      const q = busqueda.trim().toLowerCase();
+      base = base.filter((d) => d.codigo.toLowerCase().includes(q) || d.tema.toLowerCase().includes(q));
+    }
+    return base;
+  })();
+
+  const hayFiltrosActivos = busqueda.trim() !== '' || etapasFiltro.size > 0 || soloConObservaciones;
 
   return (
     <div className="page">
@@ -303,22 +344,101 @@ export function SubmissionPage() {
         
         {/* Tabla / Lista de Investigaciones */}
         <div className="card" style={{ padding: '20px', background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <div className="eval-tabs" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '16px', display: 'flex', gap: '6px' }}>
+          <div className="eval-tabs" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '16px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             <button
               className={`eval-tabs__btn ${filtroTab === 'todos' ? 'active' : ''}`}
               onClick={() => setFiltroTab('todos')}
               style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
             >
-              Todos ({misDocumentos.length})
+              Todas mis Investigaciones ({misDocumentos.length})
+            </button>
+            <button
+              className={`eval-tabs__btn ${filtroTab === 'completadas' ? 'active' : ''}`}
+              onClick={() => setFiltroTab('completadas')}
+              style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Investigaciones Completadas ({misCompletados.length})
+            </button>
+            <button
+              className={`eval-tabs__btn ${filtroTab === 'canceladas' ? 'active' : ''}`}
+              onClick={() => setFiltroTab('canceladas')}
+              style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              Investigaciones Canceladas ({misCancelados.length})
             </button>
             <button
               className={`eval-tabs__btn ${filtroTab === 'devueltos' ? 'active' : ''}`}
               onClick={() => setFiltroTab('devueltos')}
               style={{ fontSize: '13px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
             >
-              Devueltos para Cambios ({misDocumentos.filter(esDevuelto).length})
+              Con Observaciones ({misDevueltos.length})
             </button>
           </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Buscar por código o título..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              style={{ fontSize: '13px', maxWidth: '280px', flex: 1 }}
+            />
+
+            {filtroTab === 'todos' && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="eval-btn eval-btn--outline"
+                  onClick={() => setShowEtapaDropdown((v) => !v)}
+                  style={{ fontSize: '12.5px', padding: '7px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  Filtrar por Etapa{etapasFiltro.size > 0 ? ` (${etapasFiltro.size})` : ''}
+                  <span style={{ fontSize: '10px' }}>▾</span>
+                </button>
+
+                {showEtapaDropdown && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 9 }}
+                      onClick={() => setShowEtapaDropdown(false)}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 10,
+                        background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px',
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.1)', padding: '10px 12px',
+                        minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '6px',
+                      }}
+                    >
+                      {ETAPA_OPTIONS.map((op) => (
+                        <label key={op.value} className="checkbox-label" style={{ fontSize: '12.5px' }}>
+                          <input
+                            type="checkbox"
+                            checked={etapasFiltro.has(op.value)}
+                            onChange={() => handleToggleEtapaFiltro(op.value)}
+                          />
+                          <span>{op.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {filtroTab === 'todos' && (
+              <label className="checkbox-label" style={{ fontSize: '12.5px', fontWeight: 600, color: '#b45309' }}>
+                <input
+                  type="checkbox"
+                  checked={soloConObservaciones}
+                  onChange={(e) => setSoloConObservaciones(e.target.checked)}
+                />
+                <span>Con Observaciones</span>
+              </label>
+            )}
+          </div>
+
           {misDocumentosFiltrados.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 0' }}>
               <div className="empty-state__icon" style={{ margin: '0 auto 16px auto' }}>
@@ -328,14 +448,24 @@ export function SubmissionPage() {
                 </svg>
               </div>
               <h2 className="empty-state__title">
-                {filtroTab === 'devueltos' ? 'No tienes proyectos devueltos para cambios' : 'No tienes investigaciones registradas'}
+                {filtroTab === 'devueltos' ? 'No tienes proyectos con observaciones'
+                  : filtroTab === 'completadas' ? 'No tienes investigaciones completadas'
+                  : filtroTab === 'canceladas' ? 'No tienes investigaciones canceladas'
+                  : hayFiltrosActivos ? 'Ningún proyecto coincide con los filtros'
+                  : 'No tienes investigaciones registradas'}
               </h2>
               <p className="empty-state__desc" style={{ maxWidth: '400px', margin: '8px auto 16px auto', color: '#64748b' }}>
                 {filtroTab === 'devueltos'
                   ? 'Aquí aparecerán los proyectos que un evaluador o el CEISH devuelva con observaciones o cambios a realizar.'
+                  : filtroTab === 'completadas'
+                  ? 'Aquí aparecerán los proyectos aprobados por el CEISH.'
+                  : filtroTab === 'canceladas'
+                  ? 'Aquí aparecerán los proyectos anulados o suspendidos.'
+                  : hayFiltrosActivos
+                  ? 'Intenta ajustar la búsqueda o los filtros seleccionados.'
                   : 'Comience registrando su protocolo de investigación y completando la ficha de anexos requeridos para solicitar la revisión.'}
               </p>
-              {filtroTab === 'todos' && (
+              {filtroTab === 'todos' && !hayFiltrosActivos && (
                 <button className="eval-btn eval-btn--primary" onClick={() => setModalOpen(true)}>
                   Registrar Proyecto
                 </button>

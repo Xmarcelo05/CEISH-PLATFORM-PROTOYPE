@@ -99,7 +99,7 @@ function formatNotifDate(iso: string): string {
 
 export function AppShell() {
   const { currentUser, logout } = useAuthStore();
-  const { notificaciones, marcarNotificacionLeida } = useCeishStore();
+  const { notificaciones, marcarNotificacionLeida, marcarTodasLeidas } = useCeishStore();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifPanelPos, setNotifPanelPos] = useState({ top: 0, left: 0 });
@@ -174,7 +174,18 @@ export function AppShell() {
                   className="shell__notif-panel"
                   style={{ top: notifPanelPos.top, left: notifPanelPos.left }}
                 >
-                  <div className="shell__notif-panel-header">Notificaciones</div>
+                  <div className="shell__notif-panel-header">
+                    <span>Notificaciones</span>
+                    {noLeidas > 0 && (
+                      <button
+                        type="button"
+                        className="shell__notif-mark-all"
+                        onClick={() => marcarTodasLeidas(currentUser.id).catch(() => {})}
+                      >
+                        Marcar todas como leídas
+                      </button>
+                    )}
+                  </div>
                   {misNotificaciones.length === 0 ? (
                     <p className="shell__notif-empty">No tienes notificaciones.</p>
                   ) : (

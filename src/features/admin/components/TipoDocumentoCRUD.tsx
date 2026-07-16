@@ -104,17 +104,22 @@ export function TipoDocumentoCRUD() {
     setSecciones(updated);
   };
 
+  // Recalcula "depende del anterior" tras cualquier cambio de orden/composición de la
+  // sección: el primer anexo nunca puede depender de nada, y cualquier anexo que ya
+  // tenía la dependencia activada (requiereAnexoIds no vacío) se re-apunta al anexo que
+  // ahora quedó inmediatamente antes que él (en vez de guardar una referencia fija que
+  // podría quedar obsoleta al arrastrar o quitar anexos).
+  const recalcularDependenciasSeccion = (anexos: AnexoAsignado[]): AnexoAsignado[] =>
+    anexos.map((a, idx) => {
+      if (idx === 0) return { ...a, requiereAnexoIds: [] };
+      if ((a.requiereAnexoIds ?? []).length === 0) return a;
+      return { ...a, requiereAnexoIds: [anexos[idx - 1].anexoTemplateId] };
+    });
+
   const handleRemoveAnexoFromSeccion = (secIdx: number, anIdx: number) => {
     const updated = [...secciones];
-    updated[secIdx].anexos = updated[secIdx].anexos.filter((_, idx) => idx !== anIdx);
-
-    // Quitar referencias colgantes: un anexo que ya no está asignado en
-    // ninguna sección no puede seguir siendo prerequisito de otro.
-    const idsRestantes = new Set(updated.flatMap(s => s.anexos.map(a => a.anexoTemplateId)));
-    updated.forEach(s => s.anexos.forEach(a => {
-      if (a.requiereAnexoIds) a.requiereAnexoIds = a.requiereAnexoIds.filter(id => idsRestantes.has(id));
-    }));
-
+    const restantes = updated[secIdx].anexos.filter((_, idx) => idx !== anIdx);
+    updated[secIdx].anexos = recalcularDependenciasSeccion(restantes);
     setSecciones(updated);
   };
 
@@ -125,36 +130,51 @@ export function TipoDocumentoCRUD() {
       [field]: value
     };
     // Si se cambia a qué plantilla apunta esta fila, las dependencias declaradas
-    // para la plantilla anterior ya no tienen sentido.
+    // para la plantilla anterior ya no tienen sentido, y cualquier fila que dependiera
+    // del anterior debe re-apuntar a la nueva plantilla en esa posición.
     if (field === 'anexoTemplateId') {
       updated[secIdx].anexos[anIdx].requiereAnexoIds = [];
+      updated[secIdx].anexos = recalcularDependenciasSeccion(updated[secIdx].anexos);
     }
     setSecciones(updated);
   };
 
-  // Todos los anexos ya asignados en cualquier sección del formulario (excluyendo
-  // la fila actual), candidatos a marcarse como prerequisito de esa fila.
-  const getOtrosAnexosAsignados = (excludeSecIdx: number, excludeAnIdx: number) => {
-    const ids = new Set<string>();
-    secciones.forEach((s, sIdx) => s.anexos.forEach((a, aIdx) => {
-      if (sIdx === excludeSecIdx && aIdx === excludeAnIdx) return;
-      ids.add(a.anexoTemplateId);
-    }));
-    return Array.from(ids)
-      .map(id => anexosTemplates.find(t => t.id === id))
-      .filter((t): t is NonNullable<typeof t> => !!t);
-  };
-
-  const handleAnexoRequiereChange = (secIdx: number, anIdx: number, targetId: string, checked: boolean) => {
+  const handleToggleDependeAnterior = (secIdx: number, anIdx: number, checked: boolean) => {
     const updated = [...secciones];
-    const anexo = updated[secIdx].anexos[anIdx];
-    const actuales = anexo.requiereAnexoIds ?? [];
+    const anterior = updated[secIdx].anexos[anIdx - 1];
     updated[secIdx].anexos[anIdx] = {
-      ...anexo,
-      requiereAnexoIds: checked ? [...actuales, targetId] : actuales.filter(id => id !== targetId),
+      ...updated[secIdx].anexos[anIdx],
+      requiereAnexoIds: checked && anterior ? [anterior.anexoTemplateId] : [],
     };
     setSecciones(updated);
   };
+
+  // Reordenar anexos dentro de una sección arrastrando con el mouse
+  const [draggedAnexo, setDraggedAnexo] = useState<{ secIdx: number; anIdx: number } | null>(null);
+
+  const handleAnexoDragStart = (secIdx: number, anIdx: number) => {
+    setDraggedAnexo({ secIdx, anIdx });
+  };
+
+  const handleAnexoDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleAnexoDrop = (secIdx: number, anIdx: number) => {
+    if (!draggedAnexo || draggedAnexo.secIdx !== secIdx || draggedAnexo.anIdx === anIdx) {
+      setDraggedAnexo(null);
+      return;
+    }
+    const updated = [...secciones];
+    const anexosSeccion = [...updated[secIdx].anexos];
+    const [movido] = anexosSeccion.splice(draggedAnexo.anIdx, 1);
+    anexosSeccion.splice(anIdx, 0, movido);
+    updated[secIdx].anexos = recalcularDependenciasSeccion(anexosSeccion);
+    setSecciones(updated);
+    setDraggedAnexo(null);
+  };
+
+  const handleAnexoDragEnd = () => setDraggedAnexo(null);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -329,10 +349,19 @@ export function TipoDocumentoCRUD() {
                           <div className="anexos-empty">Ningún anexo asociado a esta etapa. Debes asociar al menos uno.</div>
                         ) : (
                           seccion.anexos.map((anexo, anIdx) => {
-                            const otrosAnexos = getOtrosAnexosAsignados(secIdx, anIdx);
                             return (
-                            <div key={anIdx} className="assigned-anexo-row-wrapper">
+                            <div
+                              key={anIdx}
+                              className={`assigned-anexo-row-wrapper${draggedAnexo?.secIdx === secIdx && draggedAnexo?.anIdx === anIdx ? ' assigned-anexo-row-wrapper--dragging' : ''}`}
+                              draggable
+                              onDragStart={() => handleAnexoDragStart(secIdx, anIdx)}
+                              onDragOver={handleAnexoDragOver}
+                              onDrop={() => handleAnexoDrop(secIdx, anIdx)}
+                              onDragEnd={handleAnexoDragEnd}
+                            >
                               <div className="assigned-anexo-row">
+                                <span className="anexo-drag-handle" title="Arrastrar para reordenar">⠿</span>
+
                                 <select
                                   className="form-input"
                                   value={anexo.anexoTemplateId}
@@ -354,6 +383,17 @@ export function TipoDocumentoCRUD() {
                                   <span>Obligatorio</span>
                                 </label>
 
+                                {anIdx > 0 && (
+                                  <label className="checkbox-label">
+                                    <input
+                                      type="checkbox"
+                                      checked={(anexo.requiereAnexoIds ?? []).length > 0}
+                                      onChange={(e) => handleToggleDependeAnterior(secIdx, anIdx, e.target.checked)}
+                                    />
+                                    <span>Depende del anterior</span>
+                                  </label>
+                                )}
+
                                 <button
                                   type="button"
                                   className="order-btn order-btn--danger"
@@ -362,22 +402,6 @@ export function TipoDocumentoCRUD() {
                                   ✕
                                 </button>
                               </div>
-
-                              {otrosAnexos.length > 0 && (
-                                <div className="anexo-requisitos" style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
-                                  <span>Depende de:</span>
-                                  {otrosAnexos.map(t => (
-                                    <label key={t.id} className="checkbox-label" style={{ marginLeft: '4px' }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={(anexo.requiereAnexoIds ?? []).includes(t.id)}
-                                        onChange={(e) => handleAnexoRequiereChange(secIdx, anIdx, t.id, e.target.checked)}
-                                      />
-                                      <span>Anexo {t.numero}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                             );
                           })
