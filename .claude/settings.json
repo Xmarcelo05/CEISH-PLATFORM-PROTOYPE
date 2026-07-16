@@ -16,7 +16,13 @@
       "Bash(rm -f _verify_notif.mjs _verify_seccion.mjs _verify_version.mjs)",
       "Bash(kill %1)",
       "Bash(pkill -f \"vite\")",
-      "Bash(docker compose *)"
+      "Bash(docker compose *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>console.log\\(JSON.parse\\(d\\).find\\(x=>x.codigo==='CEISH-2026-0002'\\).tema\\)\\)\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>console.log\\(JSON.stringify\\(JSON.parse\\(d\\).find\\(t=>t.id==='anexo-1'\\),null,2\\)\\)\\)\")",
+      "Bash(git fetch *)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const r=JSON.parse\\(d\\); console.log\\('estado:', r.documento.estado, '| historial length:', r.documento.historial_estados.length\\)}\\)\")",
+      "Bash(node _verify_devuelto.mjs)",
+      "Bash(rm -f _verify_devuelto.mjs)"
     ]
   }
 }

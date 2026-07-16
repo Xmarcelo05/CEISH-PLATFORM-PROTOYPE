@@ -41,6 +41,43 @@ const DOC_COLUMNS = `id, codigo, tipo_documento_id, tema, descripcion, investiga
   riesgo_declarado, riesgo_confirmado, miembros_ceish_declarados, estado, versiones_archivo,
   historial_estados, cronometro, created_at`;
 
+const ESTADO_LABELS: Record<DocumentoEstado, string> = {
+  creada: 'Borrador',
+  estratificacion: 'Estratificación',
+  'revision-tecnica': 'Revisión Técnica',
+  aprobada: 'Aprobada',
+  anulada: 'Anulada',
+};
+
+const RIESGO_LABELS: Record<RiesgoTipo, string> = {
+  'sin-riesgo': 'Sin Riesgo',
+  'riesgo-minimo': 'Riesgo Mínimo',
+  'riesgo-mayor': 'Riesgo Mayor',
+};
+
+/** Compara el documento original contra los campos entrantes de editarDocumento y describe
+ * en texto plano qué cambió puntualmente (para notificaciones detalladas al investigador/evaluador). */
+function describirCambiosDocumento(
+  doc: DocumentoRow,
+  campos: { tema: string; descripcion: string; riesgoDeclarado: RiesgoTipo; riesgoConfirmado: RiesgoTipo | null; estado: DocumentoEstado },
+): string[] {
+  const cambios: string[] = [];
+  if (campos.tema !== doc.tema) cambios.push(`título: "${doc.tema}" → "${campos.tema}"`);
+  if (campos.descripcion !== doc.descripcion) cambios.push('descripción/justificación');
+  if (campos.riesgoDeclarado !== doc.riesgo_declarado) {
+    cambios.push(`riesgo declarado: ${RIESGO_LABELS[doc.riesgo_declarado]} → ${RIESGO_LABELS[campos.riesgoDeclarado]}`);
+  }
+  if (campos.riesgoConfirmado !== doc.riesgo_confirmado) {
+    const antes = doc.riesgo_confirmado ? RIESGO_LABELS[doc.riesgo_confirmado] : 'sin confirmar';
+    const despues = campos.riesgoConfirmado ? RIESGO_LABELS[campos.riesgoConfirmado] : 'sin confirmar';
+    cambios.push(`riesgo confirmado: ${antes} → ${despues}`);
+  }
+  if (campos.estado !== doc.estado) {
+    cambios.push(`estado: ${ESTADO_LABELS[doc.estado]} → ${ESTADO_LABELS[campos.estado]}`);
+  }
+  return cambios;
+}
+
 export async function listDocumentos(investigadorId?: string): Promise<DocumentoRow[]> {
   if (investigadorId) {
     return query<DocumentoRow>(
@@ -209,10 +246,14 @@ export async function editarDocumento(
     );
     const evaluadoresActivosPrevios = activasRes.rows.map((r) => r.evaluador_id);
 
-    // Notificación (5b): cualquier edición directa del admin avisa a investigador + evaluador(es) activos.
-    eventos.push(...[doc.investigador_id, ...evaluadoresActivosPrevios].map((destinatarioId) => ({
-      destinatarioId, mensaje: `El Administrador modificó el proyecto ${doc.codigo}.`,
-    })));
+    // Notificación (5b): cualquier edición directa del admin avisa a investigador + evaluador(es)
+    // activos, detallando puntualmente qué campo(s) cambiaron.
+    const cambiosDocumento = describirCambiosDocumento(doc, campos);
+    if (cambiosDocumento.length > 0) {
+      eventos.push(...[doc.investigador_id, ...evaluadoresActivosPrevios].map((destinatarioId) => ({
+        destinatarioId, mensaje: `El Administrador modificó el proyecto ${doc.codigo}: ${cambiosDocumento.join('; ')}.`,
+      })));
+    }
 
     if (nuevoEvaluadorId !== undefined) {
       await client.query(

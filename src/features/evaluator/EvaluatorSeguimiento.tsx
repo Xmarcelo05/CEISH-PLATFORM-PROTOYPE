@@ -43,7 +43,7 @@ export function EvaluatorSeguimiento() {
 
   const getEstadoBadge = (estado: string) => {
     const badges: Record<string, { text: string; className: string }> = {
-      creada: { text: 'Borrador / Creación', className: 'eval-badge eval-badge--pending' },
+      creada: { text: 'Borrador (Devuelto para Correcciones)', className: 'eval-badge eval-badge--pending' },
       estratificacion: { text: 'Etapa 2: Estratificación', className: 'eval-badge eval-badge--in-progress' },
       'revision-tecnica': { text: 'Etapa 3: Revisión Técnica', className: 'eval-badge' },
       aprobada: { text: 'Aprobada (Exenta)', className: 'eval-badge eval-badge--success' },
@@ -228,7 +228,7 @@ export function EvaluatorSeguimiento() {
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '12.5px', background: '#f8fafc' }}>
                     <th style={{ padding: '10px 12px' }}>Código</th>
-                    <th style={{ padding: '10px 12px' }}>Tema / Título</th>
+                    <th style={{ padding: '10px 12px' }}>Título</th>
                     <th style={{ padding: '10px 12px' }}>Riesgo</th>
                     <th style={{ padding: '10px 12px', textAlign: 'right' }}>Acción</th>
                   </tr>

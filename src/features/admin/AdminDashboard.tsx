@@ -111,9 +111,9 @@ export function AdminDashboard() {
     }
   };
 
-  const getEstadoBadge = (estado: DocumentoEstado) => {
+  const getEstadoBadge = (estado: DocumentoEstado, devuelto?: boolean) => {
     const configs: Record<DocumentoEstado, { label: string; cls: string }> = {
-      creada: { label: 'Borrador', cls: 'badge--neutral' },
+      creada: { label: devuelto ? 'Borrador (Devuelto para Correcciones)' : 'Borrador', cls: 'badge--neutral' },
       estratificacion: { label: 'Estratificación', cls: 'badge--info' },
       'revision-tecnica': { label: 'Rev. Técnica', cls: 'badge--warning' },
       aprobada: { label: 'Aprobada', cls: 'badge--success' },
@@ -365,7 +365,7 @@ export function AdminDashboard() {
                               {doc.autores.length > 0 ? doc.autores.map(a => a.nombre).join(', ') : 'Ninguno'}
                             </td>
                             <td style={{ padding: '14px 16px' }}>
-                              {getEstadoBadge(doc.estado)}
+                              {getEstadoBadge(doc.estado, doc.estado === 'creada' && doc.historialEstados.length > 1)}
                             </td>
                             <td style={{ padding: '14px 16px' }}>
                               {getRiesgoBadge(doc.riesgoDeclarado)}
@@ -683,7 +683,7 @@ export function AdminDashboard() {
                           </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                          {getEstadoBadge(project.estado)}
+                          {getEstadoBadge(project.estado, project.estado === 'creada' && project.historialEstados.length > 1)}
                           <svg 
                             width="16" 
                             height="16" 

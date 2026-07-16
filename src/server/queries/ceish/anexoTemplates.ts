@@ -5,7 +5,7 @@ import { query, withTransaction } from '../../../lib/database';
 import { insertNotificaciones } from './notificaciones';
 import type { NotificacionEvento, NotificacionRow } from './notificaciones';
 import { stripAnexoFromAllTipos } from './tiposDocumento';
-import type { Pregunta } from '../../../shared/types/platform.types';
+import type { Pregunta, CampoTipo } from '../../../shared/types/platform.types';
 
 export interface AnexoTemplateRow {
   id: string;
@@ -27,6 +27,45 @@ export interface AnexoTemplateInput {
 }
 
 const COLUMNS = 'id, numero, nombre, rol, preguntas, word_template_name, word_template_object_key';
+
+const CAMPO_TIPO_LABELS: Record<CampoTipo, string> = {
+  checklist: 'Checklist',
+  'texto-libre': 'Respuesta Abierta',
+  archivo: 'Adjuntar Archivo',
+  'si-no': 'Sí o No',
+  'seleccion-unica': 'Selección Única',
+  'seleccion-multiple': 'Selección Múltiple',
+};
+
+/** Compara las preguntas de un AnexoTemplate antes/después de una edición y describe en
+ * texto plano qué pregunta se agregó, eliminó, o tuvo su texto/tipo de campo editado (para
+ * notificaciones detalladas, en vez de un mensaje genérico "se modificaron preguntas"). */
+function describirCambiosPreguntas(preguntasAntes: Pregunta[], preguntasDespues: Pregunta[]): string[] {
+  const cambios: string[] = [];
+
+  preguntasDespues.forEach((np) => {
+    const op = preguntasAntes.find((p) => p.id === np.id);
+    if (!op) {
+      cambios.push(`pregunta agregada: "${np.texto}"`);
+      return;
+    }
+    if (op.texto !== np.texto) {
+      cambios.push(`pregunta editada: "${op.texto}" → "${np.texto}"`);
+    }
+    if (op.tipo !== np.tipo) {
+      cambios.push(`tipo de campo cambiado en "${np.texto}": ${CAMPO_TIPO_LABELS[op.tipo]} → ${CAMPO_TIPO_LABELS[np.tipo]}`);
+    }
+  });
+
+  preguntasAntes.forEach((op) => {
+    const stillExists = preguntasDespues.some((np) => np.id === op.id);
+    if (!stillExists) {
+      cambios.push(`pregunta eliminada: "${op.texto}"`);
+    }
+  });
+
+  return cambios;
+}
 
 function withPreguntaIds(preguntas: AnexoTemplateInput['preguntas']): Pregunta[] {
   return preguntas.map((p, idx) => ({
@@ -145,16 +184,13 @@ export async function updateAnexoTemplate(id: string, input: AnexoTemplateInput)
     }
 
     // Notificación (5a): cualquier cambio estructural en las preguntas avisa a
-    // investigador + evaluadores activos de TODOS los documentos activos que usan esta plantilla.
-    const huboCambioEstructural = oldTemplate.preguntas.length !== nuevasPreguntas.length
-      || oldTemplate.preguntas.some((op) => {
-        const np = nuevasPreguntas.find((p) => p.id === op.id);
-        return !np || np.texto !== op.texto || np.tipo !== op.tipo;
-      });
+    // investigador + evaluadores activos de TODOS los documentos activos que usan esta plantilla,
+    // detallando puntualmente qué pregunta(s) cambiaron.
+    const cambiosPreguntas = describirCambiosPreguntas(oldTemplate.preguntas, nuevasPreguntas);
 
-    const notificaciones = huboCambioEstructural
+    const notificaciones = cambiosPreguntas.length > 0
       ? await notificarDocumentos(client, docsConEsteAnexo, (d) =>
-        `El Administrador modificó las preguntas del Anexo ${input.numero} (${input.nombre}) en el proyecto ${d.codigo}. Revisa si tus respuestas siguen vigentes.`)
+        `El Administrador modificó el Anexo ${input.numero} (${input.nombre}) en el proyecto ${d.codigo}: ${cambiosPreguntas.join('; ')}.`)
       : [];
 
     return { template, notificaciones };

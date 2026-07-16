@@ -59,10 +59,10 @@ export interface Assignment {
 
 export type RiesgoTipo = 'sin-riesgo' | 'riesgo-minimo' | 'riesgo-mayor';
 
-export type DocumentoEstado = 
-  | 'creada'             // Borrador inicial
-  | 'estratificacion'    // En Etapa 1 / 2 de la configuración
-  | 'revision-tecnica'   // En Etapa 2 / 3 de la configuración
+export type DocumentoEstado =
+  | 'creada'             // Etapa 1: Creación (borrador inicial)
+  | 'estratificacion'    // Etapa 2: Estratificación
+  | 'revision-tecnica'   // Etapa 3: Evaluación / Revisión Técnica
   | 'aprobada'           // Finalizado aprobado (Anexo 13)
   | 'anulada';           // Finalizado rechazado/anulado (Anexo 26)
 

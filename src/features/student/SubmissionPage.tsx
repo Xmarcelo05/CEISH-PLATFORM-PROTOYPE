@@ -198,11 +198,14 @@ export function SubmissionPage() {
   };
 
   // Renderizar badge de estado
-  const renderEstadoBadge = (estado: string) => {
+  const renderEstadoBadge = (estado: string, devuelto?: boolean) => {
     const badges: Record<string, { text: string; className: string }> = {
-      creada: { text: 'Borrador (Falta Llenar Anexos)', className: 'eval-badge eval-badge--pending' },
-      estratificacion: { text: 'Etapa 1: Estratificación', className: 'eval-badge eval-badge--in-progress' },
-      'revision-tecnica': { text: 'Etapa 2: Revisión Técnica', className: 'eval-badge' },
+      creada: {
+        text: devuelto ? 'Borrador (Devuelto para Correcciones)' : 'Borrador (Falta Llenar Anexos)',
+        className: 'eval-badge eval-badge--pending',
+      },
+      estratificacion: { text: 'Etapa 2: Estratificación', className: 'eval-badge eval-badge--in-progress' },
+      'revision-tecnica': { text: 'Etapa 3: Revisión Técnica', className: 'eval-badge' },
       aprobada: { text: 'Aprobada (Exenta)', className: 'eval-badge eval-badge--success' },
       anulada: { text: 'Anulada / Suspendida', className: 'eval-badge eval-badge--rejected' },
     };
@@ -343,7 +346,7 @@ export function SubmissionPage() {
               <thead>
                 <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '13px' }}>
                   <th style={{ padding: '12px 8px' }}>Código</th>
-                  <th style={{ padding: '12px 8px' }}>Tema / Proyecto</th>
+                  <th style={{ padding: '12px 8px' }}>Título</th>
                   <th style={{ padding: '12px 8px' }}>Riesgo</th>
                   <th style={{ padding: '12px 8px' }}>Estado</th>
                   <th style={{ padding: '12px 8px', textAlign: 'right' }}>Acciones</th>
@@ -375,7 +378,7 @@ export function SubmissionPage() {
                       {doc.riesgoDeclarado.replace('-', ' ')}
                     </td>
                     <td style={{ padding: '14px 8px' }}>
-                      {renderEstadoBadge(doc.estado)}
+                      {renderEstadoBadge(doc.estado, esDevuelto(doc))}
                     </td>
                     <td style={{ padding: '14px 8px', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>

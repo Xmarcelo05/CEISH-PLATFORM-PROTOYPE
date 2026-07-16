@@ -503,7 +503,7 @@ export function ReviewCeishPage() {
         },
         'aprobado',
         'revision-tecnica',
-        'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 2).',
+        'Carta de exención emitida. El proyecto pasa a revisión técnica (Etapa 3).',
         'sin-riesgo'
       );
 
@@ -1266,7 +1266,7 @@ export function ReviewCeishPage() {
                     {/* ACCIONES DE ESTRATIFICACIÓN (Etapa 2) */}
                     {documento.estado === 'estratificacion' && activeAnexoId === 'anexo-27' && (
                       <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: '#eff6ff', padding: '14px', borderRadius: '8px' }}>
-                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e3a8a' }}>Resolución de Estratificación (Etapa 1 CEISH)</h4>
+                        <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#1e3a8a' }}>Resolución de Estratificación (Etapa 2)</h4>
                         
                         {/* Opción 1: Confirmar Sin Riesgo */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
